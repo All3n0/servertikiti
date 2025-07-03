@@ -305,29 +305,64 @@ def set_user_cookie(resp, user):
     token = serializer.dumps(user.id)
     resp.set_cookie('user_session', token, httponly=True, secure=True, max_age=3600)
 
+# auth.py (backend)
+
+from flask import make_response, jsonify
+from werkzeug.security import generate_password_hash
+from datetime import datetime
+
 @app.route('/auth/register', methods=['POST'])
 def register():
     try:
         data = request.json
+        
+        # Check if username exists
+        if User.query.filter_by(username=data['username']).first():
+            return jsonify({'error': 'Username already exists'}), 400
+            
+        # Check if email exists
         if User.query.filter_by(email=data['email']).first():
-            return jsonify({'error':'Email exists'}), 400
+            return jsonify({'error': 'Email already exists'}), 400
+            
+        # Create new user
         user = User(
-            username=data['username'], 
-            email=data['email'], 
-            password_hash=generate_password_hash(data['password']), 
-            role='user'
+            username=data['username'],
+            email=data['email'],
+            password_hash=generate_password_hash(data['password']),
+            role='user',
+            created_at=datetime.utcnow()
         )
+        
         db.session.add(user)
-        print(user)
         db.session.commit()
-        resp = make_response(jsonify({'message':'Registered'}))
-        set_user_cookie(resp, user)
-        return resp
+        
+        # Create response with success message
+        response = make_response(jsonify({
+            'message': 'Registered',
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email
+            }
+        }), 200)
+        
+        # Set the cookie
+        token = serializer.dumps(user.id)
+        response.set_cookie(
+            'user_session',
+            token,
+            httponly=True,
+            secure=False,  # Use False in development if not using HTTPS
+            samesite='Lax',
+            max_age=3600  # 1 hour expiration
+        )
+        
+        return response
+        
     except Exception as e:
         db.session.rollback()
-        print(f"Registration error: {str(e)}")  # Check your console
+        print(f"Registration error: {e}")
         return jsonify({'error': 'Registration failed'}), 500
-
 @app.route('/auth/login', methods=['POST'])
 def login():
     data = request.json
