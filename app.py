@@ -415,6 +415,14 @@ def get_session():
     except Exception as e:
         print("Session check failed:", e)
         return jsonify({'user': None}), 200
-
+@app.route('/auth/logout', methods=['POST'])
+def logout():
+    try:
+        response = make_response(jsonify({'success': True, 'message': 'Logged out successfully'}))
+        response.delete_cookie('user_session')
+        return response
+    except Exception as e:
+        print(f"Logout error: {e}")
+        return jsonify({'success': False, 'error': 'Logout failed'}), 500
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5557, debug=True)
