@@ -320,12 +320,6 @@ def featured_organizers_alt():
         'rating': 4.7
     } for o in orgs])
 #organizer-event routes
-# Get all events for a specific organizer
-# @app.route('/organiser/<int:organiser_id>/events', methods=['GET'])
-# def get_organiser_events(organiser_id):
-#     events = Event.query.filter_by(organizer_id=organiser_id).order_by(Event.created_at.desc()).all()
-#     return jsonify([e.to_dict() for e in events]), 200
-
 # Create event
 @app.route('/organiser/<int:organiser_id>/events', methods=['POST'])
 def create_event(organiser_id):
@@ -369,17 +363,7 @@ def delete_event(event_id):
     db.session.delete(event)
     db.session.commit()
     return jsonify({'message': 'Deleted'}), 200
-# Add these routes to your Flask backend
 
-@app.route('/venues', methods=['GET'])
-def get_venues():
-    venues = Venue.query.all()
-    return jsonify([v.to_dict() for v in venues]), 200
-
-@app.route('/venues/<int:venue_id>', methods=['GET'])
-def get_venue(venue_id):
-    venue = Venue.query.get_or_404(venue_id)
-    return jsonify(venue.to_dict()), 200
 
 # Enhanced event route to include venue details
 @app.route('/organiser/<int:organiser_id>/events', methods=['GET'])
@@ -393,6 +377,83 @@ def get_organiser_events(organiser_id):
             event_data['venue'] = venue.to_dict() if venue else None
         events_data.append(event_data)
     return jsonify(events_data), 200
+#organiser-sponsor-routes
+@app.route('/sponsors', methods=['GET'])
+def get_sponsors():
+    sponsors = Sponsor.query.all()
+    return jsonify([s.to_dict() for s in sponsors]), 200
+
+@app.route('/sponsors', methods=['POST'])
+def create_sponsor():
+    data = request.get_json()
+    sponsor = Sponsor(
+        name=data['name'],
+        logo=data.get('logo'),
+        website=data.get('website'),
+        contact_email=data.get('contact_email'),
+        sponsorship_level=data.get('sponsorship_level')
+    )
+    db.session.add(sponsor)
+    db.session.commit()
+    return jsonify(sponsor.to_dict()), 201
+
+@app.route('/sponsors/<int:id>', methods=['PATCH'])
+def update_sponsor(id):
+    sponsor = Sponsor.query.get_or_404(id)
+    data = request.get_json()
+    for field in ['name', 'logo', 'website', 'contact_email', 'sponsorship_level']:
+        if field in data:
+            setattr(sponsor, field, data[field])
+    db.session.commit()
+    return jsonify(sponsor.to_dict()), 200
+@app.route('/sponsors/<int:id>', methods=['DELETE'])
+def delete_sponsor(id):
+    sponsor = Sponsor.query.get_or_404(id)
+    db.session.delete(sponsor)
+    db.session.commit()
+    return jsonify({'message': 'Deleted'}), 204
+#organiser-venue-routes
+
+@app.route('/venues', methods=['GET'])
+def get_venues():
+    venues = Venue.query.all()
+    return jsonify([v.to_dict() for v in venues]), 200
+
+@app.route('/venues/<int:venue_id>', methods=['GET'])
+def get_venue(venue_id):
+    venue = Venue.query.get_or_404(venue_id)
+    return jsonify(venue.to_dict()), 200
+@app.route('/venues', methods=['POST'])
+def create_venue():
+    data = request.get_json()
+    venue = Venue(
+        name=data['name'],
+        address=data.get('address'),
+        city=data.get('city'),
+        state=data.get('state'),
+        zip_code=data.get('zip_code'),
+        capacity=data.get('capacity')
+    )
+    db.session.add(venue)
+    db.session.commit()
+    return jsonify(venue.to_dict()), 201
+
+@app.route('/venues/<int:id>', methods=['PATCH'])
+def update_venue(id):
+    venue = Venue.query.get_or_404(id)
+    data = request.get_json()
+    for field in ['name', 'address', 'city', 'state', 'zip_code', 'capacity']:
+        if field in data:
+            setattr(venue, field, data[field])
+    db.session.commit()
+    return jsonify(venue.to_dict()), 200
+
+@app.route('/venues/<int:id>', methods=['DELETE'])
+def delete_venue(id):
+    venue = Venue.query.get_or_404(id)
+    db.session.delete(venue)
+    db.session.commit()
+    return jsonify({'message': 'Deleted'}), 204
 @app.route('/')
 def home():
     return jsonify({
@@ -404,6 +465,61 @@ def home():
             'featured_events': '/featured-events'
         }
     })
+#organizer-ticket-routes
+# List ticket types with sold count for an organizer
+@app.route('/organiser/<int:organiser_id>/ticket-types', methods=['GET'])
+def organiser_ticket_types(organiser_id):
+    # returns ticket types + event title + sold count
+    q = db.session.query(
+        TicketType,
+        Event.title.label('event_title'),
+        func.count(Ticket.id).label('sold')
+    ).join(Event).outerjoin(Ticket).filter(Event.organizer_id==organiser_id).group_by(TicketType.id, Event.title)
+    result = []
+    for tt, event_title, sold in q:
+        d = tt.to_dict()
+        d['event_title'] = event_title
+        d['sold'] = sold
+        result.append(d)
+    return jsonify(result), 200
+
+# Create ticket type
+@app.route('/ticket-types', methods=['POST'])
+def create_ticket_type():
+    data = request.json
+    tt = TicketType(
+      event_id=data['event_id'],
+      name=data['name'],
+      price=data['price'],
+      quantity_available=data['quantity_available'],
+      sales_start=datetime.fromisoformat(data['sales_start']),
+      sales_end=datetime.fromisoformat(data['sales_end']),
+      description=data.get('description'),
+      is_active=data.get('is_active', True)
+    )
+    db.session.add(tt)
+    db.session.commit()
+    return jsonify(tt.to_dict()), 201
+
+# Edit ticket type
+@app.route('/ticket-types/<int:id>', methods=['PATCH'])
+def update_ticket_type(id):
+    tt = TicketType.query.get_or_404(id)
+    data = request.json
+    for key in ['name','price','quantity_available','sales_start','sales_end','description','is_active']:
+        if key in data:
+            val = datetime.fromisoformat(data[key]) if 'start' in key or 'end' in key else data[key]
+            setattr(tt, key, val)
+    db.session.commit()
+    return jsonify(tt.to_dict()), 200
+
+# Delete ticket type
+@app.route('/ticket-types/<int:id>', methods=['DELETE'])
+def delete_ticket_type(id):
+    tt = TicketType.query.get_or_404(id)
+    db.session.delete(tt)
+    db.session.commit()
+    return jsonify({'message':'Deleted'}), 204
 #UserLogins
 def set_user_cookie(resp, user):
     token_data = {
