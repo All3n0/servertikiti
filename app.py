@@ -22,6 +22,37 @@ CORS(app, supports_credentials=True)
 
 # Import models after db initialization to avoid circular imports
 from models import Organizer, Event, Venue, Sponsor, TicketType, User, Order, Discount, Ticket, RefundRequest
+#organizer dashboard
+@app.route('/organizers/<int:organizer_id>/dashboard', methods=['GET'])
+def get_organizer_dashboard(organizer_id):
+    organizer = Organizer.query.get_or_404(organizer_id)
+
+    today = datetime.utcnow().date()
+
+    today_events = Event.query.filter(
+        Event.organizer_id == organizer.id,
+        db.func.date(Event.start_datetime) == today
+    ).all()
+
+    if today_events:
+        today_event = today_events[0]
+        total_revenue = sum(order.total_amount for order in Order.query.join(Ticket).join(TicketType).filter(TicketType.event_id == today_event.id).all())
+        total_attendees = Ticket.query.join(TicketType).filter(TicketType.event_id == today_event.id).count()
+        average_rating = today_event.rating
+    else:
+        today_event = None
+        total_revenue = 0
+        total_attendees = 0
+        average_rating = 0.0
+
+    return jsonify({
+        "organizer": organizer.to_dict(),
+        "today_event": today_event.to_dict() if today_event else None,
+        "total_revenue": total_revenue,
+        "total_attendees": total_attendees,
+        "average_rating": average_rating
+    })
+
 #organizers
 @app.route('/organizers')
 def get_organizers():
@@ -288,7 +319,80 @@ def featured_organizers_alt():
         'eventsCount': len(o.events),
         'rating': 4.7
     } for o in orgs])
+#organizer-event routes
+# Get all events for a specific organizer
+# @app.route('/organiser/<int:organiser_id>/events', methods=['GET'])
+# def get_organiser_events(organiser_id):
+#     events = Event.query.filter_by(organizer_id=organiser_id).order_by(Event.created_at.desc()).all()
+#     return jsonify([e.to_dict() for e in events]), 200
 
+# Create event
+@app.route('/organiser/<int:organiser_id>/events', methods=['POST'])
+def create_event(organiser_id):
+    data = request.json
+    try:
+        event = Event(
+            title=data['title'],
+            description=data['description'],
+            venue_id=data['venue_id'],
+            start_datetime=datetime.fromisoformat(data['start_datetime']),
+            end_datetime=datetime.fromisoformat(data['end_datetime']),
+            organizer_id=organiser_id,
+            image=data.get('image'),
+            category=data.get('category'),
+            capacity=data.get('capacity', 0),
+            is_active=True
+        )
+        db.session.add(event)
+        db.session.commit()
+        return jsonify(event.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        print("Error creating event:", e)
+        return jsonify({'error': 'Event creation failed'}), 500
+
+# Update event
+@app.route('/events/<int:event_id>', methods=['PATCH'])
+def update_event(event_id):
+    data = request.json
+    event = Event.query.get_or_404(event_id)
+    for key in ['title', 'description', 'venue_id', 'start_datetime', 'end_datetime', 'image', 'category', 'capacity']:
+        if key in data:
+            setattr(event, key, data[key] if key not in ['start_datetime', 'end_datetime'] else datetime.fromisoformat(data[key]))
+    db.session.commit()
+    return jsonify(event.to_dict()), 200
+
+# Delete event
+@app.route('/events/<int:event_id>', methods=['DELETE'])
+def delete_event(event_id):
+    event = Event.query.get_or_404(event_id)
+    db.session.delete(event)
+    db.session.commit()
+    return jsonify({'message': 'Deleted'}), 200
+# Add these routes to your Flask backend
+
+@app.route('/venues', methods=['GET'])
+def get_venues():
+    venues = Venue.query.all()
+    return jsonify([v.to_dict() for v in venues]), 200
+
+@app.route('/venues/<int:venue_id>', methods=['GET'])
+def get_venue(venue_id):
+    venue = Venue.query.get_or_404(venue_id)
+    return jsonify(venue.to_dict()), 200
+
+# Enhanced event route to include venue details
+@app.route('/organiser/<int:organiser_id>/events', methods=['GET'])
+def get_organiser_events(organiser_id):
+    events = Event.query.filter_by(organizer_id=organiser_id).order_by(Event.start_datetime.asc()).all()
+    events_data = []
+    for event in events:
+        event_data = event.to_dict()
+        if event.venue_id:
+            venue = Venue.query.get(event.venue_id)
+            event_data['venue'] = venue.to_dict() if venue else None
+        events_data.append(event_data)
+    return jsonify(events_data), 200
 @app.route('/')
 def home():
     return jsonify({
@@ -302,8 +406,19 @@ def home():
     })
 #UserLogins
 def set_user_cookie(resp, user):
-    token = serializer.dumps(user.id)
-    resp.set_cookie('user_session', token, httponly=True, secure=True, max_age=3600)
+    token_data = {
+        'id': user.id,
+        'role': user.role
+    }
+    token = serializer.dumps(token_data)
+    resp.set_cookie(
+        'user_session',
+        token,
+        httponly=True,
+        secure=False,  # Set to True in production (HTTPS)
+        samesite='Lax',
+        max_age=3600
+    )
 
 # auth.py (backend)
 
@@ -347,15 +462,8 @@ def register():
         }), 200)
         
         # Set the cookie
-        token = serializer.dumps(user.id)
-        response.set_cookie(
-            'user_session',
-            token,
-            httponly=True,
-            secure=False,  # Use False in development if not using HTTPS
-            samesite='Lax',
-            max_age=3600  # 1 hour expiration
-        )
+        set_user_cookie(response, user)
+
         
         return response
         
@@ -403,18 +511,25 @@ def get_session():
         token = request.cookies.get('user_session')
         if not token:
             return jsonify({'user': None}), 200
-        user_id = serializer.loads(token, max_age=3600)
+
+        token_data = serializer.loads(token, max_age=3600)
+        user_id = token_data['id']
+        role = token_data.get('role', 'user')  # fallback to 'user' if not present
+
         user = User.query.get(user_id)
         if not user:
             return jsonify({'user': None}), 200
+
         return jsonify({'user': {
             'id': user.id,
             'username': user.username,
-            'email': user.email
+            'email': user.email,
+            'role': role
         }}), 200
     except Exception as e:
         print("Session check failed:", e)
         return jsonify({'user': None}), 200
+
 @app.route('/auth/logout', methods=['POST'])
 def logout():
     try:

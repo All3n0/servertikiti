@@ -24,7 +24,7 @@ class Organizer(db.Model):
     speciality = db.Column(db.String(100))
     contact_email = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
+    rating = db.Column(db.Float, default=0.0)
     events = db.relationship('Event', backref='organizer', lazy=True)
     
     def to_dict(self):
@@ -97,6 +97,7 @@ class Event(db.Model):
     organizer_id = db.Column(db.Integer, db.ForeignKey('organizers.id'), nullable=False)
     image = db.Column(db.String(255))  # Path to event image
     category = db.Column(db.String(100))
+    rating = db.Column(db.Float, default=0.0)
     capacity = db.Column(db.Integer)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)

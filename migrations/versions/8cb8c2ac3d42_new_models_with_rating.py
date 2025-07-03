@@ -1,8 +1,8 @@
-"""new models
+"""new models with rating
 
-Revision ID: 4e68b3ee8052
+Revision ID: 8cb8c2ac3d42
 Revises: 
-Create Date: 2025-07-03 11:32:16.744114
+Create Date: 2025-07-03 17:44:28.337690
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '4e68b3ee8052'
+revision = '8cb8c2ac3d42'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -29,6 +29,7 @@ def upgrade():
     sa.Column('speciality', sa.String(length=100), nullable=True),
     sa.Column('contact_email', sa.String(length=100), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=True),
+    sa.Column('rating', sa.Float(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('email')
     )
@@ -73,6 +74,7 @@ def upgrade():
     sa.Column('organizer_id', sa.Integer(), nullable=False),
     sa.Column('image', sa.String(length=255), nullable=True),
     sa.Column('category', sa.String(length=100), nullable=True),
+    sa.Column('rating', sa.Float(), nullable=True),
     sa.Column('capacity', sa.Integer(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
