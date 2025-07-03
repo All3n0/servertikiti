@@ -1,8 +1,8 @@
-"""models
+"""new models
 
-Revision ID: 5b926627e63b
+Revision ID: 4e68b3ee8052
 Revises: 
-Create Date: 2025-07-01 18:39:19.264172
+Create Date: 2025-07-03 11:32:16.744114
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '5b926627e63b'
+revision = '4e68b3ee8052'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -25,6 +25,8 @@ def upgrade():
     sa.Column('phone', sa.String(length=20), nullable=False),
     sa.Column('logo', sa.String(length=255), nullable=True),
     sa.Column('website', sa.String(length=255), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('speciality', sa.String(length=100), nullable=True),
     sa.Column('contact_email', sa.String(length=100), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
@@ -71,6 +73,7 @@ def upgrade():
     sa.Column('organizer_id', sa.Integer(), nullable=False),
     sa.Column('image', sa.String(length=255), nullable=True),
     sa.Column('category', sa.String(length=100), nullable=True),
+    sa.Column('capacity', sa.Integer(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=True),
     sa.Column('created_at', sa.DateTime(), nullable=True),
     sa.Column('updated_at', sa.DateTime(), nullable=True),

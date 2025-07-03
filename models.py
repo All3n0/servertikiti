@@ -20,6 +20,8 @@ class Organizer(db.Model):
     phone = db.Column(db.String(20), nullable=False)
     logo = db.Column(db.String(255))  # Path to logo image
     website = db.Column(db.String(255))
+    description = db.Column(db.Text)
+    speciality = db.Column(db.String(100))
     contact_email = db.Column(db.String(100), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -31,6 +33,8 @@ class Organizer(db.Model):
             'name': self.name,
             'email': self.email,
             'phone': self.phone,
+            'speciality': self.speciality,
+            'description': self.description,
             'logo': self.logo,
             'website': self.website,
             'contact_email': self.contact_email,
@@ -93,6 +97,7 @@ class Event(db.Model):
     organizer_id = db.Column(db.Integer, db.ForeignKey('organizers.id'), nullable=False)
     image = db.Column(db.String(255))  # Path to event image
     category = db.Column(db.String(100))
+    capacity = db.Column(db.Integer)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -111,6 +116,7 @@ class Event(db.Model):
             'end_datetime': self.end_datetime.isoformat(),
             'organizer_id': self.organizer_id,
             'image': self.image,
+            'capacity': self.capacity,
             'category': self.category,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat(),

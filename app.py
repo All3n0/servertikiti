@@ -52,10 +52,128 @@ def get_organizers():
             })
 
     return jsonify(result)
+@app.route('/organizers/<int:organizer_id>')
+def get_organizer(organizer_id):
+    # Get organizer with stats
+    organizer_data = db.session.query(
+        Organizer,
+        func.count(Event.id).label('total_events'),
+        func.sum(Event.capacity).label('total_capacity'),
+        func.avg(Event.capacity).label('avg_attendance')
+    ).join(Event, Organizer.id == Event.organizer_id
+     ).filter(Organizer.id == organizer_id
+     ).group_by(Organizer.id).first()
 
+    if not organizer_data:
+        return jsonify({'error': 'Organizer not found'}), 404
+
+    organizer, total_events, total_capacity, avg_attendance = organizer_data
+
+    # Get upcoming events
+    upcoming_events = Event.query.filter(
+        Event.organizer_id == organizer_id,
+        Event.end_datetime >= datetime.now(),
+        Event.is_active == True
+    ).join(Venue).order_by(Event.start_datetime.asc()).all()
+
+    # Get past events count
+    past_events_count = Event.query.filter(
+        Event.organizer_id == organizer_id,
+        Event.end_datetime < datetime.now(),
+        Event.is_active == True
+    ).count()
+
+    # Build response
+    response = {
+        'organizer': organizer.to_dict(),
+        'stats': {
+            'total_events': total_events,
+            'past_events': past_events_count,
+            'upcoming_events': len(upcoming_events),
+            'total_capacity': total_capacity or 0,
+            'avg_attendance': round(float(avg_attendance or 0), 2),
+            'rating': 4.5  # Placeholder - you might want to calculate actual ratings
+        },
+        'upcoming_events': [{
+            'id': event.id,
+            'title': event.title,
+            'start_datetime': event.start_datetime.isoformat(),
+            'end_datetime': event.end_datetime.isoformat(),
+            'venue': event.venue.to_dict() if event.venue else None,
+            'image': event.image,
+            'category': event.category,
+            'capacity': event.capacity
+        } for event in upcoming_events],
+        'contact': {
+            'email': organizer.contact_email,
+            'phone': organizer.phone,
+            'website': organizer.website
+        }
+    }
+
+    return jsonify(response)
+
+
+@app.route('/organizers/featured/detailed')
+def featured_organizers_detailed():
+    organizers = db.session.query(
+        Organizer,
+        func.count(Event.id).label('event_count'),
+        func.avg(Event.capacity).label('avg_attendance')
+    ).join(Event).group_by(Organizer.id
+    ).order_by(func.count(Event.id).desc()).limit(4).all()
+    
+    result = []
+    for organizer, event_count, avg_attendance in organizers:
+        org_data = organizer.to_dict()
+        org_data['event_count'] = event_count
+        org_data['avg_attendance'] = round(float(avg_attendance or 0), 2)
+        org_data['rating'] = 4.5  # Default rating
+        
+        # Get first upcoming event for category
+        upcoming = Event.query.filter(
+            Event.organizer_id == organizer.id,
+            Event.end_datetime >= datetime.now()
+        ).order_by(Event.start_datetime.asc()).first()
+        
+        if upcoming:
+            org_data['next_event'] = {
+                'category': upcoming.category,
+                'date': upcoming.start_datetime.isoformat()
+            }
+        result.append(org_data)
+    
+    return jsonify(result)
+
+
+@app.route('/organizers/search')
+def search_organizers():
+    search_term = request.args.get('q', '')
+    min_events = request.args.get('min_events', 0, type=int)
+    
+    query = db.session.query(
+        Organizer,
+        func.count(Event.id).label('event_count')
+    ).join(Event).group_by(Organizer.id)
+    
+    if search_term:
+        query = query.filter(Organizer.name.ilike(f'%{search_term}%'))
+    
+    if min_events > 0:
+        query = query.having(func.count(Event.id) >= min_events)
+    
+    organizers = query.order_by(Organizer.name.asc()).all()
+    
+    result = []
+    for organizer, event_count in organizers:
+        org_data = organizer.to_dict()
+        org_data['event_count'] = event_count
+        result.append(org_data)
+    
+    return jsonify(result)
 # Routes
-@app.route('/organizers/featured')
-def featured_organizers():
+@app.route('/organizers/featured/summary')
+def featured_organizers_summary():
     organizers = db.session.query(
         Organizer,
         func.count(Event.id).label('event_count')
