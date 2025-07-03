@@ -214,5 +214,24 @@ def reset_password(token):
     resp = make_response(jsonify({'message':'Password set'}))
     set_user_cookie(resp, user)
     return resp
+@app.route('/auth/session', methods=['GET'])
+def get_session():
+    try:
+        token = request.cookies.get('user_session')
+        if not token:
+            return jsonify({'user': None}), 200
+        user_id = serializer.loads(token, max_age=3600)
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'user': None}), 200
+        return jsonify({'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email
+        }}), 200
+    except Exception as e:
+        print("Session check failed:", e)
+        return jsonify({'user': None}), 200
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5557, debug=True)
