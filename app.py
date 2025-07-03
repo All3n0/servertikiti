@@ -22,6 +22,36 @@ CORS(app, supports_credentials=True)
 
 # Import models after db initialization to avoid circular imports
 from models import Organizer, Event, Venue, Sponsor, TicketType, User, Order, Discount, Ticket, RefundRequest
+#organizers
+@app.route('/organizers')
+def get_organizers():
+    search = request.args.get('search', '', type=str).lower()
+    min_events = request.args.get('min_events', 0, type=int)
+
+    query = db.session.query(Organizer).outerjoin(Event).group_by(Organizer.id)
+
+    if search:
+        query = query.filter(
+            func.lower(Organizer.name).like(f'%{search}%') |
+            func.lower(Organizer.website).like(f'%{search}%')
+        )
+
+    organizers = query.all()
+
+    result = []
+    for organizer in organizers:
+        event_count = len(organizer.events)
+        if event_count >= min_events:
+            result.append({
+                'id': organizer.id,
+                'name': organizer.name,
+                'avatar': organizer.logo,
+                'specialty': organizer.website,
+                'eventsCount': event_count,
+                'rating': 4.7  # placeholder
+            })
+
+    return jsonify(result)
 
 # Routes
 @app.route('/organizers/featured')
