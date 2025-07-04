@@ -467,21 +467,32 @@ def home():
     })
 #organizer-ticket-routes
 # List ticket types with sold count for an organizer
+from sqlalchemy import func
+
 @app.route('/organiser/<int:organiser_id>/ticket-types', methods=['GET'])
-def organiser_ticket_types(organiser_id):
-    # returns ticket types + event title + sold count
-    q = db.session.query(
-        TicketType,
-        Event.title.label('event_title'),
-        func.count(Ticket.id).label('sold')
-    ).join(Event).outerjoin(Ticket).filter(Event.organizer_id==organiser_id).group_by(TicketType.id, Event.title)
-    result = []
-    for tt, event_title, sold in q:
-        d = tt.to_dict()
-        d['event_title'] = event_title
-        d['sold'] = sold
-        result.append(d)
-    return jsonify(result), 200
+def get_ticket_types_for_organiser(organiser_id):
+    results = (
+        db.session.query(
+            TicketType,
+            Event.title.label('event_title'),
+            func.count(Ticket.id).label('sold')
+        )
+        .join(Event, TicketType.event_id == Event.id)
+        .outerjoin(Ticket, Ticket.ticket_type_id == TicketType.id)
+        .filter(Event.organizer_id == organiser_id)
+        .group_by(TicketType.id, Event.title)
+        .all()
+    )
+
+    output = []
+    for ticket_type, event_title, sold in results:
+        data = ticket_type.to_dict()
+        data['event_title'] = event_title
+        data['sold'] = sold
+        output.append(data)
+
+    return output, 200
+
 
 # Create ticket type
 @app.route('/ticket-types', methods=['POST'])
@@ -520,21 +531,19 @@ def delete_ticket_type(id):
     db.session.delete(tt)
     db.session.commit()
     return jsonify({'message':'Deleted'}), 204
+
 #UserLogins
-def set_user_cookie(resp, user):
-    token_data = {
+def set_user_cookie(response, user, extra_data=None):
+    data = {
         'id': user.id,
+        'email': user.email,
         'role': user.role
     }
-    token = serializer.dumps(token_data)
-    resp.set_cookie(
-        'user_session',
-        token,
-        httponly=True,
-        secure=False,  # Set to True in production (HTTPS)
-        samesite='Lax',
-        max_age=3600
-    )
+    if extra_data:
+        data.update(extra_data)
+    token = serializer.dumps(data)
+    response.set_cookie('user_session', token, httponly=True, max_age=3600)
+
 
 # auth.py (backend)
 
@@ -626,25 +635,68 @@ def get_session():
     try:
         token = request.cookies.get('user_session')
         if not token:
-            return jsonify({'user': None}), 200
+            return jsonify(None), 200
 
         token_data = serializer.loads(token, max_age=3600)
         user_id = token_data['id']
-        role = token_data.get('role', 'user')  # fallback to 'user' if not present
+        role = token_data.get('role', 'user')  # fallback if role missing
 
         user = User.query.get(user_id)
         if not user:
-            return jsonify({'user': None}), 200
+            return jsonify(None), 200
 
-        return jsonify({'user': {
+        return jsonify({
             'id': user.id,
             'username': user.username,
             'email': user.email,
             'role': role
-        }}), 200
+        }), 200
     except Exception as e:
         print("Session check failed:", e)
-        return jsonify({'user': None}), 200
+        return jsonify(None), 200
+
+@app.route('/auth/switch-to-organizer', methods=['POST'])
+def switch_to_organizer():
+    try:
+        token = request.cookies.get('user_session')
+        if not token:
+            return jsonify({'error': 'No session found'}), 401
+
+        token_data = serializer.loads(token)
+        user_id = token_data.get('id')
+
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        # Check if already organizer
+        existing_organizer = Organizer.query.filter_by(email=user.email).first()
+        if existing_organizer:
+            return jsonify({'error': 'Already an organizer'}), 400
+
+        # Create organizer record
+        organizer = Organizer(
+            name=user.username,
+            email=user.email,
+            phone='Not Provided',
+            contact_email=user.email
+        )
+        db.session.add(organizer)
+
+        # Change user role
+        user.role = 'organizer'
+
+        db.session.commit()
+
+        # Update cookie
+        response = make_response(jsonify({'message': 'Switched to organizer', 'organizer_id': organizer.id}))
+        set_user_cookie(response, user, extra_data={'organizer_id': organizer.id})  # Update helper function
+        return response
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Switch error: {e}")
+        return jsonify({'error': 'Failed to switch to organizer'}), 500
 
 @app.route('/auth/logout', methods=['POST'])
 def logout():
