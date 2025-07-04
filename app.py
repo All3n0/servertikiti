@@ -1,4 +1,5 @@
 from ast import parse
+import uuid
 from flask import Flask, jsonify, request, make_response,jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -203,6 +204,74 @@ def search_organizers():
         result.append(org_data)
     
     return jsonify(result)
+#ticket-purchase
+@app.route('/checkout', methods=['POST'])
+def checkout():
+    data = request.json
+    user_id = data.get('user_id')
+    quantities = data.get('quantities')  # {ticket_type_id: quantity}
+    attendee_name = data.get('attendee_name')
+    attendee_email = data.get('attendee_email')
+    billing_address = data.get('billing_address')
+    payment_method = data.get('payment_method')
+
+    if not user_id or not quantities:
+        return jsonify({'error': 'Missing user or quantities'}), 400
+
+    user = User.query.get(user_id)
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    total = 0
+    tickets_created = []
+
+    for ticket_type_id, qty in quantities.items():
+        ticket_type = TicketType.query.get(ticket_type_id)
+        if not ticket_type or ticket_type.quantity_available < qty:
+            return jsonify({'error': f'Invalid or unavailable ticket type ID: {ticket_type_id}'}), 400
+
+        total += ticket_type.price * qty
+
+    # Create order
+    order = Order(
+        user_id=user_id,
+        customer_email=attendee_email,
+        order_date=datetime.utcnow(),
+        total_amount=total,
+        status='completed',
+        payment_method=payment_method,
+        payment_status='paid',
+        billing_address=billing_address
+    )
+    db.session.add(order)
+    db.session.flush()  # Get order.id before commit
+
+    for ticket_type_id, qty in quantities.items():
+        ticket_type = TicketType.query.get(ticket_type_id)
+
+        for _ in range(qty):
+            ticket = Ticket(
+                ticket_type_id=ticket_type_id,
+                order_id=order.id,
+                attendee_name=attendee_name,
+                attendee_email=attendee_email,
+                unique_code=str(uuid.uuid4())
+            )
+            db.session.add(ticket)
+            tickets_created.append(ticket)
+
+        ticket_type.quantity_available -= qty
+
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Checkout successful',
+        'order_id': order.id,
+        'total': total,
+        'tickets': [t.to_dict() for t in tickets_created]
+    })
+
+
 # Routes
 @app.route('/organizers/featured/summary')
 def featured_organizers_summary():
