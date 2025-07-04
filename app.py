@@ -1,3 +1,4 @@
+from ast import parse
 from flask import Flask, jsonify, request, make_response,jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -495,22 +496,38 @@ def get_ticket_types_for_organiser(organiser_id):
 
 
 # Create ticket type
+from datetime import datetime
+from dateutil.parser import parse
+
 @app.route('/ticket-types', methods=['POST'])
 def create_ticket_type():
     data = request.json
-    tt = TicketType(
-      event_id=data['event_id'],
-      name=data['name'],
-      price=data['price'],
-      quantity_available=data['quantity_available'],
-      sales_start=datetime.fromisoformat(data['sales_start']),
-      sales_end=datetime.fromisoformat(data['sales_end']),
-      description=data.get('description'),
-      is_active=data.get('is_active', True)
-    )
-    db.session.add(tt)
-    db.session.commit()
-    return jsonify(tt.to_dict()), 201
+    try:
+        # Ensure dates are properly parsed as strings first
+        sales_start_str = str(data['sales_start']) if 'sales_start' in data else None
+        sales_end_str = str(data['sales_end']) if 'sales_end' in data else None
+        
+        # Now parse the string dates
+        sales_start = parse(sales_start_str) if sales_start_str else None
+        sales_end = parse(sales_end_str) if sales_end_str else None
+        
+        tt = TicketType(
+            event_id=data['event_id'],
+            name=data['name'],
+            price=data['price'],
+            quantity_available=data['quantity_available'],
+            sales_start=sales_start,
+            sales_end=sales_end,
+            description=data.get('description'),
+            is_active=data.get('is_active', True)
+        )
+        db.session.add(tt)
+        db.session.commit()
+        return jsonify(tt.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creating ticket type: {e}\nData received: {data}")
+        return jsonify({'error': 'Invalid date format'}), 400
 
 # Edit ticket type
 @app.route('/ticket-types/<int:id>', methods=['PATCH'])
