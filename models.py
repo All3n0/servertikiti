@@ -190,6 +190,7 @@ class Order(db.Model):
     discounts = db.relationship('Discount', backref='order', lazy=True)
     
     def to_dict(self):
+        
         return {
             'id': self.id,
             'user_id': self.user_id,
@@ -243,7 +244,7 @@ class Ticket(db.Model):
     is_redeemed = db.Column(db.Boolean, default=False)
     redemption_date = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
+    ticket_type=db.relationship('TicketType', backref='ticket', lazy=True)
     refund_request = db.relationship('RefundRequest', backref='ticket', uselist=False, lazy=True)
     
     def generate_qr_code(self):
@@ -264,9 +265,12 @@ class Ticket(db.Model):
         self.qr_code_path = img_path
     
     def to_dict(self):
+        
         return {
             'id': self.id,
             'ticket_type_id': self.ticket_type_id,
+            'ticket_type': self.ticket_type.name,
+            'price': self.ticket_type.price,
             'order_id': self.order_id,
             'attendee_name': self.attendee_name,
             'attendee_email': self.attendee_email,
