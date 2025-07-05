@@ -580,6 +580,7 @@ def get_organiser_events(organiser_id):
             'id': event.id,
             'title': event.title,
             'start_datetime': event.start_datetime.isoformat(),
+            'end_datetime': event.end_datetime.isoformat(),
             'image': event.image,
             'status': 'Published' if event.is_active else 'Draft',
             'attendees': total_attendees,
