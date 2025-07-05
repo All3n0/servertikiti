@@ -185,12 +185,17 @@ class Order(db.Model):
     payment_method = db.Column(db.String(50))
     payment_status = db.Column(db.String(20))
     billing_address = db.Column(db.Text)
-    
+
+    # ✅ NEW FIELDS
+    event_id = db.Column(db.Integer, db.ForeignKey('events.id'), nullable=False)
+    transaction_reference = db.Column(db.String(100), unique=True, nullable=True)
+
+    # Relationships
+    event = db.relationship('Event', backref='orders', lazy=True)
     tickets = db.relationship('Ticket', backref='order', lazy=True)
     discounts = db.relationship('Discount', backref='order', lazy=True)
-    
+
     def to_dict(self):
-        
         return {
             'id': self.id,
             'user_id': self.user_id,
@@ -200,8 +205,19 @@ class Order(db.Model):
             'status': self.status,
             'payment_method': self.payment_method,
             'payment_status': self.payment_status,
-            'billing_address': self.billing_address
+            'billing_address': self.billing_address,
+            'event_id': self.event_id,
+            'transaction_reference': self.transaction_reference
         }
+
+    def to_dict_full(self):
+        return {
+            **self.to_dict(),
+            'event_title': self.event.title if self.event else None,
+            'organizer_id': self.event.organizer.id if self.event else None,
+            'organizer_name': self.event.organizer.name if self.event else None,
+        }
+
 
 class Discount(db.Model):
     __tablename__ = 'discounts'

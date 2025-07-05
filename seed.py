@@ -38,7 +38,7 @@ with app.app_context():
     # --- Events ---
     event1 = Event(title="Nairobi Music Fest", description="Annual music festival", venue=venue1,
                    start_datetime=datetime(2025, 8, 1, 16, 0), end_datetime=datetime(2025, 8, 1, 22, 0),
-                   organizer=organizer1, image="events/musicfest.jpg", category="Music")
+                   organizer=organizer1, image="events/musicfest.jpg", category="Music" )
     event2 = Event(title="Tech Conference 2025", description="Tech talks and innovation", venue=venue2,
                    start_datetime=datetime(2025, 9, 12, 10, 0), end_datetime=datetime(2025, 9, 12, 17, 0),
                    organizer=organizer2, image="events/techconf.jpg", category="Technology")
@@ -70,12 +70,15 @@ with app.app_context():
     db.session.add_all([user1, user2, user3, user4, user5])
 
     # --- Orders ---
-    order1 = Order(user=user3, customer_email=user3.email, total_amount=1000)
-    order2 = Order(user=user4, customer_email=user4.email, total_amount=500)
-    order3 = Order(user=user5, customer_email=user5.email, total_amount=2500)
-    order4 = Order(user=user3, customer_email=user3.email, total_amount=3000)
-    order5 = Order(user=user4, customer_email=user4.email, total_amount=800)
+    order1 = Order(user=user3, customer_email=user3.email, total_amount=1000, event_id=event1.id, transaction_reference='TXN-10001')
+    order2 = Order(user=user4, customer_email=user4.email, total_amount=500, event_id=event2.id, transaction_reference='TXN-10002')
+    order3 = Order(user=user5, customer_email=user5.email, total_amount=2500, event_id=event1.id, transaction_reference='TXN-10003')
+    order4 = Order(user=user3, customer_email=user3.email, total_amount=3000, event_id=event3.id, transaction_reference='TXN-10004')
+    order5 = Order(user=user4, customer_email=user4.email, total_amount=800, event_id=event2.id, transaction_reference='TXN-10005')
+
     db.session.add_all([order1, order2, order3, order4, order5])
+    
+
 
     # --- Discounts ---
     discount1 = Discount(code="DISC10", discount_type="percentage", value=10, valid_from=datetime(2025, 7, 1), valid_to=datetime(2025, 12, 1), max_uses=100, order=order1)

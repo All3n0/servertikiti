@@ -25,36 +25,47 @@ CORS(app, supports_credentials=True)
 # Import models after db initialization to avoid circular imports
 from models import Organizer, Event, Venue, Sponsor, TicketType, User, Order, Discount, Ticket, RefundRequest
 #organizer dashboard
-@app.route('/organizers/<int:organizer_id>/dashboard', methods=['GET'])
-def get_organizer_dashboard(organizer_id):
+@app.route('/organizers/<int:organizer_id>/dashboard')
+def organizer_dashboard(organizer_id):
     organizer = Organizer.query.get_or_404(organizer_id)
 
-    today = datetime.utcnow().date()
+    # Get all events by this organizer
+    events = Event.query.filter_by(organizer_id=organizer_id).all()
+    event_ids = [event.id for event in events]
 
-    today_events = Event.query.filter(
-        Event.organizer_id == organizer.id,
-        db.func.date(Event.start_datetime) == today
-    ).all()
+    # Total revenue from orders of those events
+    total_revenue = db.session.query(func.coalesce(func.sum(Order.total_amount), 0))\
+        .filter(Order.event_id.in_(event_ids)).scalar()
 
-    if today_events:
-        today_event = today_events[0]
-        total_revenue = sum(order.total_amount for order in Order.query.join(Ticket).join(TicketType).filter(TicketType.event_id == today_event.id).all())
-        total_attendees = Ticket.query.join(TicketType).filter(TicketType.event_id == today_event.id).count()
-        average_rating = today_event.rating
-    else:
-        today_event = None
-        total_revenue = 0
-        total_attendees = 0
-        average_rating = 0.0
+    # Total attendees (number of tickets sold)
+    total_attendees = db.session.query(func.count(Ticket.id))\
+        .join(Order).filter(Order.event_id.in_(event_ids)).scalar()
+
+    # Average rating from all events
+    average_rating = db.session.query(func.coalesce(func.avg(Event.rating), 0))\
+        .filter(Event.organizer_id == organizer_id).scalar()
+
+    # Get upcoming event for display
+    today_event = Event.query.filter(
+        Event.organizer_id == organizer_id,
+        Event.start_datetime >= datetime.utcnow()
+    ).order_by(Event.start_datetime).first()
 
     return jsonify({
-        "organizer": organizer.to_dict(),
-        "today_event": today_event.to_dict() if today_event else None,
-        "total_revenue": total_revenue,
-        "total_attendees": total_attendees,
-        "average_rating": average_rating
+        'organizer': {
+            'id': organizer.id,
+            'name': organizer.name,
+            'email': organizer.email
+        },
+        'total_revenue': float(total_revenue),
+        'total_attendees': total_attendees,
+        'average_rating': round(average_rating, 1),
+        'today_event': {
+            'id': today_event.id,
+            'title': today_event.title,
+            'start_datetime': today_event.start_datetime.isoformat()
+        } if today_event else None
     })
-
 #organizers
 @app.route('/organizers')
 def get_organizers():
@@ -205,6 +216,8 @@ def search_organizers():
     
     return jsonify(result)
 #ticket-purchase
+from uuid import uuid4
+
 @app.route('/checkout', methods=['POST'])
 def checkout():
     data = request.json
@@ -224,28 +237,37 @@ def checkout():
 
     total = 0
     tickets_created = []
+    event_id = None
 
+    # Calculate total and confirm availability
     for ticket_type_id, qty in quantities.items():
         ticket_type = TicketType.query.get(ticket_type_id)
         if not ticket_type or ticket_type.quantity_available < qty:
             return jsonify({'error': f'Invalid or unavailable ticket type ID: {ticket_type_id}'}), 400
 
+        if event_id and ticket_type.event_id != event_id:
+            return jsonify({'error': 'Cannot purchase tickets for multiple events in one order.'}), 400
+        event_id = ticket_type.event_id
+
         total += ticket_type.price * qty
 
     # Create order
+    transaction_ref = f"TXN-{uuid4().hex[:10].upper()}"
     order = Order(
         user_id=user_id,
         customer_email=attendee_email,
-        order_date=datetime.utcnow(),
+        event_id=event_id,
         total_amount=total,
         status='completed',
         payment_method=payment_method,
         payment_status='paid',
-        billing_address=billing_address
+        billing_address=billing_address,
+        transaction_reference=transaction_ref
     )
     db.session.add(order)
-    db.session.flush()  # Get order.id before commit
+    db.session.flush()  # To get order.id
 
+    # Create tickets
     for ticket_type_id, qty in quantities.items():
         ticket_type = TicketType.query.get(ticket_type_id)
 
@@ -255,8 +277,9 @@ def checkout():
                 order_id=order.id,
                 attendee_name=attendee_name,
                 attendee_email=attendee_email,
-                unique_code=str(uuid.uuid4())
+                unique_code=str(uuid4())
             )
+            ticket.generate_qr_code()
             db.session.add(ticket)
             tickets_created.append(ticket)
 
@@ -268,8 +291,10 @@ def checkout():
         'message': 'Checkout successful',
         'order_id': order.id,
         'total': total,
+        'transaction_reference': transaction_ref,
         'tickets': [t.to_dict() for t in tickets_created]
     })
+
 
 
 # Routes
