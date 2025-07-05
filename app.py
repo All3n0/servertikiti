@@ -450,6 +450,31 @@ def update_event(event_id):
             setattr(event, key, data[key] if key not in ['start_datetime', 'end_datetime'] else datetime.fromisoformat(data[key]))
     db.session.commit()
     return jsonify(event.to_dict()), 200
+#event stats
+@app.route('/events/<int:event_id>/stats')
+def get_event_stats(event_id):
+    event = Event.query.get_or_404(event_id)
+
+    # Total revenue
+    total_revenue = sum(order.total_amount for order in event.orders if order.status == 'completed')
+
+    # Tickets sold by type
+    ticket_counts = (
+        db.session.query(Ticket.ticket_type_id, TicketType.name, db.func.count(Ticket.id))
+        .join(TicketType)
+        .filter(TicketType.event_id == event_id)
+        .group_by(Ticket.ticket_type_id, TicketType.name)
+        .all()
+    )
+
+    tickets_by_type = [
+        {'ticket_type_id': t[0], 'name': t[1], 'count': t[2]} for t in ticket_counts
+    ]
+
+    return {
+        'total_revenue': total_revenue,
+        'tickets_by_type': tickets_by_type
+    }
 
 # Delete event
 @app.route('/events/<int:event_id>', methods=['DELETE'])
@@ -458,6 +483,27 @@ def delete_event(event_id):
     db.session.delete(event)
     db.session.commit()
     return jsonify({'message': 'Deleted'}), 200
+@app.route('/events/<int:event_id>', methods=['GET'])
+def get_event_by_id(event_id):
+    event = Event.query.get_or_404(event_id)
+
+    venue = Venue.query.get(event.venue_id)
+
+    return {
+        'id': event.id,
+        'title': event.title,
+        'description': event.description,
+        'image': event.image,
+        'start_datetime': event.start_datetime.isoformat(),
+        'end_datetime': event.end_datetime.isoformat(),
+        'capacity': event.venue.capacity if event.venue else None,
+        'category': event.category,
+        'venue': {
+            'name': venue.name,
+            'city': venue.city,
+            'state': venue.state,
+        } if venue else None
+    }
 
 
 # Enhanced event route to include venue details
