@@ -66,6 +66,40 @@ def organizer_dashboard(organizer_id):
             'start_datetime': today_event.start_datetime.isoformat()
         } if today_event else None
     })
+#upcoming events
+@app.route('/organiser/<int:organiser_id>/upcoming', methods=['GET'])
+def get_upcoming_events(organiser_id):
+    now = datetime.utcnow()
+    upcoming_events = Event.query.filter(
+        Event.organizer_id == organiser_id,
+        Event.start_datetime > now
+    ).order_by(Event.start_datetime.asc()).all()
+
+    upcoming_data = []
+    for event in upcoming_events:
+        orders = Order.query.filter_by(event_id=event.id, status='completed').all()
+        total_attendees = sum(len(order.tickets) for order in orders)
+        total_revenue = sum(order.total_amount for order in orders)
+
+        event_data = {
+            'id': event.id,
+            'title': event.title,
+            'start_datetime': event.start_datetime.isoformat(),
+            'image': event.image,
+            'status': 'Published' if event.is_active else 'Draft',
+            'attendees': total_attendees,
+            'revenue': total_revenue,
+            'rating': round(event.rating, 1) if event.rating else 0.0
+        }
+
+        if event.venue_id:
+            venue = Venue.query.get(event.venue_id)
+            event_data['venue'] = venue.to_dict() if venue else None
+
+        upcoming_data.append(event_data)
+
+    return jsonify(upcoming_data), 200
+
 #organizers
 @app.route('/organizers')
 def get_organizers():
@@ -511,13 +545,31 @@ def get_event_by_id(event_id):
 def get_organiser_events(organiser_id):
     events = Event.query.filter_by(organizer_id=organiser_id).order_by(Event.start_datetime.asc()).all()
     events_data = []
+
     for event in events:
-        event_data = event.to_dict()
+        orders = Order.query.filter_by(event_id=event.id, status='completed').all()
+        total_attendees = sum(len(order.tickets) for order in orders)
+        total_revenue = sum(order.total_amount for order in orders)
+
+        event_data = {
+            'id': event.id,
+            'title': event.title,
+            'start_datetime': event.start_datetime.isoformat(),
+            'image': event.image,
+            'status': 'Published' if event.is_active else 'Draft',
+            'attendees': total_attendees,
+            'revenue': total_revenue,
+            'rating': round(event.rating, 1) if event.rating else 0.0
+        }
+
         if event.venue_id:
             venue = Venue.query.get(event.venue_id)
             event_data['venue'] = venue.to_dict() if venue else None
+
         events_data.append(event_data)
+
     return jsonify(events_data), 200
+
 #organiser-sponsor-routes
 @app.route('/sponsors', methods=['GET'])
 def get_sponsors():
