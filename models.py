@@ -102,7 +102,7 @@ class Event(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+    status=db.Column(db.String(20), default='pending')
     sponsors = db.relationship('Sponsor', secondary=event_sponsor, lazy='subquery',
                              backref=db.backref('events', lazy=True))
     ticket_types = db.relationship('TicketType', backref='event', lazy=True)
@@ -317,4 +317,22 @@ class RefundRequest(db.Model):
             'status': self.status,
             'processed_date': self.processed_date.isoformat() if self.processed_date else None,
             'admin_notes': self.admin_notes
+        }
+class Management(db.Model):
+    __tablename__ = 'management'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(100), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)
+    role = db.Column(db.String(20), default='admin')  # could support 'admin', 'moderator', etc.
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'name': self.name,
+            'email': self.email,
+            'role': self.role,
+            'created_at': self.created_at.isoformat()
         }

@@ -1,6 +1,6 @@
 from ast import parse
 import uuid
-from flask import Flask, jsonify, request, make_response,jsonify
+from flask import Flask, jsonify, request, make_response,jsonify, session
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_migrate import Migrate
@@ -23,7 +23,7 @@ migrate = Migrate(app, db)
 CORS(app, supports_credentials=True)
 
 # Import models after db initialization to avoid circular imports
-from models import Organizer, Event, Venue, Sponsor, TicketType, User, Order, Discount, Ticket, RefundRequest
+from models import Management, Organizer, Event, Venue, Sponsor, TicketType, User, Order, Discount, Ticket, RefundRequest
 #organizer dashboard
 @app.route('/organizers/<int:organizer_id>/dashboard')
 def organizer_dashboard(organizer_id):
@@ -916,5 +916,18 @@ def logout():
     except Exception as e:
         print(f"Logout error: {e}")
         return jsonify({'success': False, 'error': 'Logout failed'}), 500
+@app.route('/management/login', methods=['POST'])
+def login_management():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+
+    manager = Management.query.filter_by(email=email).first()
+
+    if manager and check_password_hash(manager.password_hash, password):
+        session['management_id'] = manager.id
+        return jsonify(manager.to_dict()), 200
+    return jsonify({'error': 'Invalid credentials'}), 401
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5557, debug=True)

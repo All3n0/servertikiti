@@ -103,6 +103,12 @@ with app.app_context():
     refund4 = RefundRequest(ticket=ticket_inst4, reason="Illness")
     refund5 = RefundRequest(ticket=ticket_inst5, reason="Change of plans")
     db.session.add_all([refund1, refund2, refund3, refund4, refund5])
-
+    admin = Management(
+    name="Super Admin",
+    email="admin@example.com",
+    password_hash=generate_password_hash("admin123"),
+    role="admin"
+)
+    db.session.add(admin)
     db.session.commit()
     print("✅ Seeded 5 records in each table successfully!")
