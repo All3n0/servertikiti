@@ -467,12 +467,30 @@ def create_event(organiser_id):
             is_active=True
         )
         db.session.add(event)
+        db.session.flush()  # So we get event.id before commit
+
+        # Create associated ticket types
+        ticket_types = data.get('ticket_types', [])
+        for ticket in ticket_types:
+            new_ticket = TicketType(
+    name=ticket['name'],
+    price=ticket['price'],
+    quantity_available=ticket['quantity'],  # ✅ Map correctly
+    event_id=event.id,
+    sales_start=datetime.fromisoformat(ticket['sales_start']),
+    sales_end=datetime.fromisoformat(ticket['sales_end']),
+    description=ticket.get('description', '')
+)
+
+            db.session.add(new_ticket)
+
         db.session.commit()
         return jsonify(event.to_dict()), 201
     except Exception as e:
         db.session.rollback()
         print("Error creating event:", e)
         return jsonify({'error': 'Event creation failed'}), 500
+
 
 # Update event
 @app.route('/events/<int:event_id>', methods=['PATCH'])
@@ -514,9 +532,16 @@ def get_event_stats(event_id):
 @app.route('/events/<int:event_id>', methods=['DELETE'])
 def delete_event(event_id):
     event = Event.query.get_or_404(event_id)
+
+    # Manually delete associated ticket types first
+    for ticket in event.ticket_types:
+        db.session.delete(ticket)
+
     db.session.delete(event)
     db.session.commit()
-    return jsonify({'message': 'Deleted'}), 200
+
+    return jsonify({'message': 'Event and tickets deleted'}), 200
+
 @app.route('/events/<int:event_id>', methods=['GET'])
 def get_event_by_id(event_id):
     event = Event.query.get_or_404(event_id)
