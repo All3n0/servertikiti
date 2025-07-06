@@ -971,5 +971,22 @@ def register_management():
 
     session['management_id'] = new_manager.id
     return jsonify(new_manager.to_dict()), 201
+@app.route('/management/session')
+def management_session():
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    manager = Management.query.get(manager_id)
+    if not manager:
+        return jsonify({'error': 'Manager not found'}), 404
+
+    return jsonify(manager.to_dict()), 200
+
+@app.route('/management/logout', methods=['DELETE'])
+def management_logout():
+    session.pop('management_id', None)
+    return '', 204
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5557, debug=True)
