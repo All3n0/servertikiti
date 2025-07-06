@@ -954,6 +954,22 @@ def login_management():
         session['management_id'] = manager.id
         return jsonify(manager.to_dict()), 200
     return jsonify({'error': 'Invalid credentials'}), 401
+@app.route('/management/register', methods=['POST'])
+def register_management():
+    data = request.json
+    email = data.get('email')
+    name = data.get('username')
+    password = data.get('password')
 
+    if Management.query.filter_by(email=email).first():
+        return jsonify({'error': 'Email already exists'}), 400
+
+    hashed_password = generate_password_hash(password)
+    new_manager = Management(email=email, name=name, password_hash=hashed_password)
+    db.session.add(new_manager)
+    db.session.commit()
+
+    session['management_id'] = new_manager.id
+    return jsonify(new_manager.to_dict()), 201
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5557, debug=True)
