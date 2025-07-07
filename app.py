@@ -987,6 +987,171 @@ def management_session():
 def management_logout():
     session.pop('management_id', None)
     return '', 204
+@app.route('/management/dashboard/stats')
+def dashboard_stats():
+    # Verify management session
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
 
+    # Get counts for dashboard
+    total_organizers = Organizer.query.count()
+    active_events = Event.query.filter_by(status='approved').count()
+    print(f"Active events: {active_events}")  # Add this line to print active_events)
+    pending_events = Event.query.filter_by(status='pending').count()
+    print(f"Pending events: {pending_events}")
+    return jsonify({
+        'total_organizers': total_organizers,
+        'active_events': active_events,
+        'pending_events': pending_events
+    })
+
+@app.route('/management/events/pending')
+def pending_events():
+    # Verify management session
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    # Get pending events with organizer and venue info
+    pending_events = Event.query.filter_by(status='pending').options(
+        db.joinedload(Event.organizer),
+        db.joinedload(Event.venue)
+    ).all()
+
+    events_data = []
+    for event in pending_events:
+        event_data = event.to_dict()
+        event_data['organizer_name'] = event.organizer.name if event.organizer else None
+        event_data['venue_name'] = event.venue.name if event.venue else None
+        events_data.append(event_data)
+
+    return jsonify(events_data)
+
+@app.route('/management/events/<int:event_id>/approve', methods=['POST'])
+def approve_event(event_id):
+    # Verify management session
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    event = Event.query.get(event_id)
+    if not event:
+        return jsonify({'error': 'Event not found'}), 404
+
+    event.status = 'approved'
+    event.is_active = True
+    db.session.commit()
+
+    return jsonify({'message': 'Event approved successfully'})
+
+@app.route('/management/events/<int:event_id>/reject', methods=['POST'])
+def reject_event(event_id):
+    # Verify management session
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    event = Event.query.get(event_id)
+    if not event:
+        return jsonify({'error': 'Event not found'}), 404
+
+    event.status = 'rejected'
+    event.is_active = False
+    db.session.commit()
+
+    return jsonify({'message': 'Event rejected successfully'})
+@app.route('/management/venues/pending')
+def pending_venues():
+    # Verify management session
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    # Get pending venues (we'll add status field to Venue model later)
+    pending_venues = Venue.query.all()  # Temporary - will filter by status later
+    venues_data = [venue.to_dict() for venue in pending_venues]
+
+    return jsonify(venues_data)
+
+@app.route('/management/organizers')
+def all_organizers():
+    # Verify management session
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    organizers = Organizer.query.all()
+    organizers_data = [org.to_dict() for org in organizers]
+
+    return jsonify(organizers_data)
+# Get all events (for management view)
+@app.route('/management/events')
+def all_events():
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    events = Event.query.options(
+        db.joinedload(Event.organizer),
+        db.joinedload(Event.venue)
+    ).all()
+
+    events_data = []
+    for event in events:
+        event_data = event.to_dict()
+        event_data['organizer_name'] = event.organizer.name if event.organizer else None
+        event_data['venue_name'] = event.venue.name if event.venue else None
+        event_data['status'] = event.status
+        events_data.append(event_data)
+
+    return jsonify(events_data)
+
+# Get single event details
+@app.route('/management/events/<int:event_id>')
+def get_event_details_for_management(event_id):
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    event = Event.query.options(
+        db.joinedload(Event.organizer),
+        db.joinedload(Event.venue),
+        db.joinedload(Event.ticket_types),
+        db.joinedload(Event.sponsors)
+    ).get(event_id)
+
+    if not event:
+        return jsonify({'error': 'Event not found'}), 404
+
+    event_data = {
+        **event.to_dict(),
+        'organizer': event.organizer.to_dict() if event.organizer else None,
+        'venue': event.venue.to_dict() if event.venue else None,
+        'ticket_types': [tt.to_dict() for tt in event.ticket_types],
+        'sponsors': [s.to_dict() for s in event.sponsors],
+        'status': event.status
+    }
+
+    return jsonify(event_data)
+
+# Contact organizer endpoint
+@app.route('/management/organizers/<int:organizer_id>')
+def get_organizer_details(organizer_id):
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    organizer = Organizer.query.get(organizer_id)
+    if not organizer:
+        return jsonify({'error': 'Organizer not found'}), 404
+
+    # Get count of events created by this organizer
+    events_count = Event.query.filter_by(organizer_id=organizer.id).count()
+
+    organizer_data = organizer.to_dict()
+    organizer_data['events_count'] = events_count
+    
+    return jsonify(organizer_data)
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5557, debug=True)
