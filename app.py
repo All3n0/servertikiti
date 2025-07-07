@@ -1153,5 +1153,29 @@ def get_organizer_details(organizer_id):
     organizer_data['events_count'] = events_count
     
     return jsonify(organizer_data)
+@app.route('/events/<int:event_id>/tickets-summary')
+def tickets_summary(event_id):
+    event = Event.query.get_or_404(event_id)
+
+    summary = []
+    for ticket_type in event.ticket_types:
+        # Count tickets that are part of completed orders (not pending or cancelled)
+        sold_count = db.session.query(Ticket).join(Order).filter(
+            Ticket.ticket_type_id == ticket_type.id,
+            Order.status == 'completed'  # Only count tickets from completed orders
+        ).count()
+        
+        total_quantity = ticket_type.quantity_available
+        remaining = max(0, total_quantity - sold_count)  # Ensure remaining isn't negative
+
+        summary.append({
+            'ticket_type_id': ticket_type.id,
+            'sold': sold_count,
+            'remaining': remaining,
+            'total': total_quantity,
+            'sales_percentage': (sold_count / total_quantity * 100) if total_quantity > 0 else 0
+        })
+
+    return jsonify(summary)
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5557, debug=True)

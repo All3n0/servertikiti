@@ -71,6 +71,9 @@ class Venue(db.Model):
     state = db.Column(db.String(100), nullable=False)
     zip_code = db.Column(db.String(20), nullable=False)
     capacity = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    status=db.Column(db.String(20), default='pending')
     
     events = db.relationship('Event', backref='venue', lazy=True)
     
