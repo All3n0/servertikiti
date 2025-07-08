@@ -651,6 +651,7 @@ def create_venue():
         city=data.get('city'),
         state=data.get('state'),
         zip_code=data.get('zip_code'),
+        status="pending",
         capacity=data.get('capacity')
     )
     db.session.add(venue)
@@ -1284,6 +1285,90 @@ def get_organizer_sponsors(organizer_id):
         'pages': sponsors.pages,
         'current_page': sponsors.page
     }), 200
+@app.route('/management/venues/<int:venue_id>/approve', methods=['PATCH', 'POST'])
+def approve_venue(venue_id):
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    venue = Venue.query.get(venue_id)
+    if not venue:
+        return jsonify({'error': 'Venue not found'}), 404
+
+    venue.status = 'approved'
+    db.session.commit()
+    return jsonify({
+        'message': 'Venue approved successfully',
+        'venue': {
+            'id': venue.id,
+            'name': venue.name,
+            'status': venue.status
+        }
+    }), 200
+
+@app.route('/management/venues/<int:venue_id>/reject', methods=['PATCH', 'POST'])
+def reject_venue(venue_id):
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    venue = Venue.query.get(venue_id)
+    if not venue:
+        return jsonify({'error': 'Venue not found'}), 404
+
+    venue.status = 'rejected'
+    db.session.commit()
+    return jsonify({
+        'message': 'Venue rejected successfully',
+        'venue': {
+            'id': venue.id,
+            'name': venue.name,
+            'status': venue.status
+        }
+    }), 200
+@app.route('/management/venues', methods=['GET'])
+def get_all_venues():
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    venues = Venue.query.all()
+    venues_data = [
+        {
+            'id': venue.id,
+            'name': venue.name,
+            'address': venue.address,
+            'city': venue.city,
+            'state': venue.state,
+            'zip_code': venue.zip_code,
+            'capacity': venue.capacity,
+            'status': venue.status,
+            'created_at': venue.created_at.isoformat() if venue.created_at else None
+        }
+        for venue in venues
+    ]
+
+    return jsonify(venues_data), 200
+@app.route('/management/venues/<int:venue_id>', methods=['GET'])
+def get_venue_details(venue_id):
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    venue = Venue.query.get_or_404(venue_id)
+    venue_data = {
+        'id': venue.id,
+        'name': venue.name,
+        'address': venue.address,
+        'city': venue.city,
+        'state': venue.state,
+        'zip_code': venue.zip_code,
+        'capacity': venue.capacity,
+        'status': venue.status,
+        'created_at': venue.created_at.isoformat() if venue.created_at else None,
+        'updated_at': venue.updated_at.isoformat() if venue.updated_at else None
+    }
+    return jsonify(venue_data), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5557, debug=True)
