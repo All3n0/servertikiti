@@ -1177,5 +1177,113 @@ def tickets_summary(event_id):
         })
 
     return jsonify(summary)
+@app.route('/management/organizers', methods=['GET'])
+def get_organizers_for_management():
+    organizers = Organizer.query.all()
+    organizers_data = []
+    for org in organizers:
+        print(f"Organizer: {org}")
+        org_data = {
+            'id': org.id,
+            'name': org.name,
+            'email': org.email,
+            'phone': org.phone,
+            'logo': org.logo,
+            'website': org.website,
+            'description': org.description,
+            'speciality': org.speciality,  # ✅ make sure this line is correct
+            'contact_email': org.contact_email,
+            'created_at': org.created_at.isoformat() if org.created_at else None,
+            'rating': org.rating,
+            'eventsCount': len(org.events)
+        }
+        organizers_data.append(org_data)
+        print (f"Organizer data: {org_data}")
+    return jsonify(organizers_data), 200
+
+@app.route('/management/organizers/<int:organizer_id>', methods=['GET'])
+def get_organizer_details_for_management(organizer_id):
+    organizer = Organizer.query.get_or_404(organizer_id)
+    
+    organizer_data = {
+        'id': organizer.id,
+        'name': organizer.name,
+        'email': organizer.email,
+        'phone': organizer.phone,
+        'logo': organizer.logo,
+        'website': organizer.website,
+        'description': organizer.description,
+        'speciality': organizer.speciality,
+        'contact_email': organizer.contact_email,
+        'created_at': organizer.created_at.isoformat() if organizer.created_at else None,
+        'rating': organizer.rating,
+        'events_count': len(organizer.events)
+    }
+    
+    return jsonify(organizer_data), 200
+
+@app.route('/management/organizers/<int:organizer_id>/events', methods=['GET'])
+def get_organizer_events_for_management(organizer_id):
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    
+    events = Event.query.filter_by(organizer_id=organizer_id)\
+                       .order_by(Event.start_datetime.desc())\
+                       .paginate(page=page, per_page=per_page, error_out=False)
+    
+    events_data = []
+    for event in events.items:
+        event_data = {
+            'id': event.id,
+            'title': event.title,
+            'description': event.description,
+            'start_datetime': event.start_datetime.isoformat(),
+            'end_datetime': event.end_datetime.isoformat(),
+            'image': event.image,
+            'status': event.status,
+            'created_at': event.created_at.isoformat() if event.created_at else None,
+            'venue': {
+                'name': event.venue.name if event.venue else None,
+                'city': event.venue.city if event.venue else None
+            }
+        }
+        events_data.append(event_data)
+    
+    return jsonify({
+        'events': events_data,
+        'total': events.total,
+        'pages': events.pages,
+        'current_page': events.page
+    }), 200
+
+@app.route('/management/organizers/<int:organizer_id>/sponsors', methods=['GET'])
+def get_organizer_sponsors(organizer_id):
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+    
+    sponsors = Sponsor.query.filter_by(organizer_id=organizer_id)\
+                           .order_by(Sponsor.name.asc())\
+                           .paginate(page=page, per_page=per_page, error_out=False)
+    
+    sponsors_data = []
+    for sponsor in sponsors.items:
+        sponsor_data = {
+            'id': sponsor.id,
+            'name': sponsor.name,
+            'logo': sponsor.logo,
+            'website': sponsor.website,
+            'sponsorship_level': sponsor.sponsorship_level,
+            'contact_email': sponsor.contact_email,
+            'contact_phone': sponsor.contact_phone
+        }
+        sponsors_data.append(sponsor_data)
+    
+    return jsonify({
+        'sponsors': sponsors_data,
+        'total': sponsors.total,
+        'pages': sponsors.pages,
+        'current_page': sponsors.page
+    }), 200
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5557, debug=True)
