@@ -8,7 +8,7 @@ from config import Config
 from sqlalchemy import func
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
-from itsdangerous import URLSafeTimedSerializer
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 # Initialize serializer
 serializer = URLSafeTimedSerializer(Config.SECRET_KEY)
@@ -329,6 +329,36 @@ def checkout():
         'tickets': [t.to_dict() for t in tickets_created]
     })
 
+@app.route('/profile/tickets', methods=['GET'])
+def get_user_tickets():
+    try:
+        token = request.cookies.get('user_session')
+        if not token:
+            return jsonify({'error': 'Not logged in'}), 401
+
+        token_data = serializer.loads(token, max_age=3600)
+        user_id = token_data['id']
+
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        orders = Order.query.filter_by(user_id=user_id).order_by(Order.order_date.desc()).all()
+
+        result = []
+        for order in orders:
+            order_data = order.to_dict_full()
+            order_data['event'] = order.event.to_dict() if order.event else None
+            order_data['tickets'] = [ticket.to_dict() for ticket in order.tickets]
+            result.append(order_data)
+
+        return jsonify(result), 200
+
+    except BadSignature:
+        return jsonify({'error': 'Invalid or expired session'}), 401
+    except Exception as e:
+        print("Error fetching tickets:", e)
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 # Routes
@@ -349,6 +379,59 @@ def featured_organizers_summary():
         result.append(org_data)
     
     return jsonify(result)
+@app.route('/organizer/profile', methods=['PATCH'])
+def update_organizer_profile():
+    try:
+        token = request.cookies.get('user_session')
+        if not token:
+            return jsonify({'error': 'Not logged in'}), 401
+        
+        data = serializer.loads(token, max_age=3600)
+        user_id = data['id']
+        user = User.query.get(user_id)
+
+        if not user or user.role != 'organizer':
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        organizer = Organizer.query.filter_by(email=user.email).first()
+        if not organizer:
+            return jsonify({'error': 'Organizer not found'}), 404
+
+        payload = request.json
+        # Update fields if present in payload
+        for field in ['name', 'email', 'phone', 'logo', 'website', 'description', 'speciality', 'contact_email']:
+            if field in payload:
+                setattr(organizer, field, payload[field])
+
+        db.session.commit()
+        return jsonify(organizer.to_dict()), 200
+
+    except Exception as e:
+        print("Error updating organizer profile:", e)
+        return jsonify({'error': 'Server error'}), 500
+
+@app.route('/organizer/profile', methods=['GET'])
+def get_organizer_profile():
+    try:
+        token = request.cookies.get('user_session')
+        if not token:
+            return jsonify({'error': 'Not logged in'}), 401
+        
+        data = serializer.loads(token, max_age=3600)
+        user_id = data['id']
+        user = User.query.get(user_id)
+
+        if not user or user.role != 'organizer':
+            return jsonify({'error': 'Unauthorized'}), 403
+
+        organizer = Organizer.query.filter_by(email=user.email).first()
+        if not organizer:
+            return jsonify({'error': 'Organizer profile not found'}), 404
+
+        return jsonify(organizer.to_dict()), 200
+    except Exception as e:
+        print("Error getting organizer profile:", e)
+        return jsonify({'error': 'Server error'}), 500
 
 @app.route('/events/counts')
 def event_counts_by_category():
@@ -768,7 +851,7 @@ def delete_ticket_type(id):
     db.session.commit()
     return jsonify({'message':'Deleted'}), 204
 
-#UserLogins
+#UserLogins/AUTH-ROUTES
 def set_user_cookie(response, user, extra_data=None):
     data = {
         'id': user.id,
