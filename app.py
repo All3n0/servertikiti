@@ -454,7 +454,8 @@ def get_events():
     search = request.args.get('search', '', type=str).lower()
     category = request.args.get('category', '', type=str).lower()
 
-    query = Event.query.filter_by(is_active=True)
+    # Start with active AND approved events
+    query = Event.query.filter_by(is_active=True, status='approved')
 
     if search:
         query = query.filter(Event.title.ilike(f'%{search}%'))
@@ -480,6 +481,7 @@ def get_events():
         })
 
     return jsonify(results)
+
 @app.route('/events/<int:id>/details')
 def get_event_details(id):
     event = Event.query.get_or_404(id)
@@ -502,8 +504,9 @@ def get_event_details(id):
 
 @app.route('/featured-events')
 def featured_events():
-    events = Event.query.filter_by(is_active=True) \
+    events = Event.query.filter_by(is_active=True, status='approved') \
                       .order_by(Event.created_at.desc()).limit(8).all()
+    
     out = []
     for e in events:
         venue = Venue.query.get(e.venue_id)
@@ -518,7 +521,9 @@ def featured_events():
             'rating': 4.5,
             'attendees': 1500
         })
+    
     return jsonify(out)
+
 
 @app.route('/featured-organizers')
 def featured_organizers_alt():
