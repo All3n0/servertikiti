@@ -124,7 +124,9 @@ class Event(db.Model):
             'category': self.category,
             'is_active': self.is_active,
             'created_at': self.created_at.isoformat(),
-            'updated_at': self.updated_at.isoformat()
+            'updated_at': self.updated_at.isoformat(),
+            'sponsors': [sponsor.to_dict() for sponsor in self.sponsors],
+            'ticket_types': [ticket_type.to_dict() for ticket_type in self.ticket_types]
         }
 
 class TicketType(db.Model):

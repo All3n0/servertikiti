@@ -580,7 +580,13 @@ def create_event(organiser_id):
 )
 
             db.session.add(new_ticket)
+        sponsor_ids = data.get('sponsor_ids', [])
+        if sponsor_ids:
+            sponsors = Sponsor.query.filter(Sponsor.id.in_(sponsor_ids)).all()
+            event.sponsors.extend(sponsors)
 
+        db.session.commit()
+        return jsonify(event.to_dict()), 201
         db.session.commit()
         return jsonify(event.to_dict()), 201
     except Exception as e:
@@ -594,11 +600,21 @@ def create_event(organiser_id):
 def update_event(event_id):
     data = request.json
     event = Event.query.get_or_404(event_id)
+
+    # Update basic fields
     for key in ['title', 'description', 'venue_id', 'start_datetime', 'end_datetime', 'image', 'category', 'capacity']:
         if key in data:
             setattr(event, key, data[key] if key not in ['start_datetime', 'end_datetime'] else datetime.fromisoformat(data[key]))
+
+    # 🔥 Update sponsors (clear then add)
+    if 'sponsor_ids' in data:
+        sponsor_ids = data['sponsor_ids']
+        sponsors = Sponsor.query.filter(Sponsor.id.in_(sponsor_ids)).all()
+        event.sponsors = sponsors  # replaces the old list
+
     db.session.commit()
     return jsonify(event.to_dict()), 200
+
 #event stats
 @app.route('/events/<int:event_id>/stats')
 def get_event_stats(event_id):
@@ -642,7 +658,6 @@ def delete_event(event_id):
 @app.route('/events/<int:event_id>', methods=['GET'])
 def get_event_by_id(event_id):
     event = Event.query.get_or_404(event_id)
-
     venue = Venue.query.get(event.venue_id)
 
     return {
@@ -652,15 +667,25 @@ def get_event_by_id(event_id):
         'image': event.image,
         'start_datetime': event.start_datetime.isoformat(),
         'end_datetime': event.end_datetime.isoformat(),
-        'capacity': event.venue.capacity if event.venue else None,
+        'capacity': event.capacity,
         'category': event.category,
         'venue': {
             'name': venue.name,
             'city': venue.city,
             'state': venue.state,
-        } if venue else None
+        } if venue else None,
+        'organizer_id': event.organizer_id,  # also needed in frontend
+        'sponsors': [
+            {
+                'id': s.id,
+                'name': s.name,
+                'logo': s.logo,
+                'website': s.website,
+                'contact_email': s.contact_email,
+                'sponsorship_level': s.sponsorship_level
+            } for s in event.sponsors
+        ]
     }
-
 
 # Enhanced event route to include venue details
 @app.route('/organiser/<int:organiser_id>/events', methods=['GET'])
