@@ -180,7 +180,8 @@ def get_organizer(organizer_id):
             'venue': event.venue.to_dict() if event.venue else None,
             'image': event.image,
             'category': event.category,
-            'capacity': event.capacity
+            'capacity': event.capacity,
+            'status': event.status
         } for event in upcoming_events],
         'contact': {
             'email': organizer.contact_email,
@@ -525,17 +526,25 @@ def featured_events():
     return jsonify(out)
 
 
-@app.route('/featured-organizers')
-def featured_organizers_alt():
-    orgs = Organizer.query.order_by(Organizer.created_at.desc()).limit(8).all()
-    return jsonify([{
-        'id': o.id,
-        'name': o.name,
-        'avatar': o.logo,
-        'specialty': o.website or "",
-        'eventsCount': len(o.events),
-        'rating': 4.7
-    } for o in orgs])
+@app.route('/organizers/featured/summary')
+def featured_organizers():
+    organizers = Organizer.query.filter_by(is_featured=True).limit(8).all()
+    out = []
+    for o in organizers:
+        events = Event.query.filter_by(organizer_id=o.id, is_active=True, status='approved').all()
+        out.append({
+            'id': o.id,
+            'name': o.name,
+            'image': o.image,
+            'rating': o.rating,
+            'events': [{
+                'id': e.id,
+                'title': e.title,
+                'start_datetime': e.start_datetime.isoformat()
+            } for e in events]
+        })
+    return jsonify(out)
+
 #organizer-event routes
 # Create event
 @app.route('/organiser/<int:organiser_id>/events', methods=['POST'])
