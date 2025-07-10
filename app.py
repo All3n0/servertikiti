@@ -723,6 +723,10 @@ def get_organiser_events(organiser_id):
 def get_sponsors():
     sponsors = Sponsor.query.all()
     return jsonify([s.to_dict() for s in sponsors]), 200
+@app.route('/sponsors/<int:id>', methods=['GET'])
+def get_sponsor(id):
+    sponsor = Sponsor.query.get_or_404(id)
+    return jsonify(sponsor.to_dict()), 200
 
 @app.route('/sponsors', methods=['POST'])
 def create_sponsor():
