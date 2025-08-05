@@ -1032,26 +1032,35 @@ def reset_password(token):
 def get_session():
     try:
         token = request.cookies.get('user_session')
+        print("🔐 Cookie value:", token)
+
         if not token:
+            print("🚫 No token found in cookies")
             return jsonify(None), 200
 
         token_data = serializer.loads(token, max_age=3600)
+        print("✅ Token data:", token_data)
+
         user_id = token_data['id']
-        role = token_data.get('role', 'user')  # fallback if role missing
+        role = token_data.get('role', 'user')
 
         user = User.query.get(user_id)
         if not user:
+            print("🚫 User not found in DB")
             return jsonify(None), 200
 
         return jsonify({
-            'id': user.id,
-            'username': user.username,
-            'email': user.email,
-            'role': role
+            'user': {
+                'id': user.id,
+                'username': user.username,
+                'email': user.email,
+                'role': role
+            }
         }), 200
     except Exception as e:
-        print("Session check failed:", e)
+        print("❌ Session check failed:", e)
         return jsonify(None), 200
+
 
 @app.route('/auth/switch-to-organizer', methods=['POST'])
 def switch_to_organizer():
