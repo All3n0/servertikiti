@@ -1,4 +1,5 @@
 from ast import parse
+from mailbox import Message
 import uuid
 from flask import Flask, jsonify, request, make_response,jsonify, session
 from flask_sqlalchemy import SQLAlchemy
@@ -847,23 +848,29 @@ from dateutil.parser import parse
 @app.route('/ticket-types', methods=['POST'])
 def create_ticket_type():
     data = request.json
+    
+    # Validate required fields
+    required_fields = ['name', 'price', 'quantity_available', 'event_id']
+    for field in required_fields:
+        if field not in data or data[field] is None:
+            return jsonify({'error': f'{field} is required'}), 400
+
     try:
-        # Ensure dates are properly parsed as strings first
-        sales_start_str = str(data['sales_start']) if 'sales_start' in data else None
-        sales_end_str = str(data['sales_end']) if 'sales_end' in data else None
+        sales_start = parse(str(data['sales_start'])) if 'sales_start' in data else None
+        sales_end = parse(str(data['sales_end'])) if 'sales_end' in data else None
         
-        # Now parse the string dates
-        sales_start = parse(sales_start_str) if sales_start_str else None
-        sales_end = parse(sales_end_str) if sales_end_str else None
-        
+        # Ensure event_id is valid
+        if not db.session.get(Event, data['event_id']):
+            return jsonify({'error': 'Invalid event_id'}), 400
+
         tt = TicketType(
             event_id=data['event_id'],
             name=data['name'],
-            price=data['price'],
-            quantity_available=data['quantity_available'],
+            price=float(data['price']),
+            quantity_available=int(data['quantity_available']),
             sales_start=sales_start,
             sales_end=sales_end,
-            description=data.get('description'),
+            description=data.get('description', ''),
             is_active=data.get('is_active', True)
         )
         db.session.add(tt)
@@ -872,7 +879,7 @@ def create_ticket_type():
     except Exception as e:
         db.session.rollback()
         print(f"Error creating ticket type: {e}\nData received: {data}")
-        return jsonify({'error': 'Invalid date format'}), 400
+        return jsonify({'error': str(e)}), 400
 
 # Edit ticket type
 @app.route('/ticket-types/<int:id>', methods=['PATCH'])
@@ -968,16 +975,38 @@ def login():
     set_user_cookie(resp, user)
     return resp
 
+
 @app.route('/auth/forgot-password', methods=['POST'])
 def forgot_password():
     data = request.json
-    user = User.query.filter_by(email=data['email']).first()
+    email = data.get('email')
+    frontend_url = data.get('frontend_url')
+
+    if not email or not frontend_url:
+        return jsonify({'error': 'Invalid request'}), 400
+
+    user = User.query.filter_by(email=email).first()
+
+    # Always return a generic message for security
     if not user:
-        return jsonify({}), 200
+        return jsonify({'message': 'If an account exists with this email, a reset link has been sent'}), 200
+
+    # Generate token
     token = serializer.dumps(user.id)
-    reset_link = f"{data['frontend_url']}/reset-password/{token}"
-    print('Reset link:', reset_link)  # or email it
-    return jsonify({'message':'If exists, reset sent'})
+    reset_link = f"{frontend_url}/reset-password/{token}"
+
+    # Send email (production logic)
+    try:
+        msg = Message(subject="Password Reset Request",
+                      recipients=[email],
+                      body=f"Hello,\n\nClick the link below to reset your password:\n{reset_link}\n\nIf you didn't request this, please ignore this email.")
+        email.send(msg)
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return jsonify({'error': 'Failed to send reset email'}), 500
+
+    return jsonify({'message': 'If an account exists with this email, a reset link has been sent'}), 200
+
 
 @app.route('/auth/reset-password/<token>', methods=['POST'])
 def reset_password(token):
