@@ -911,8 +911,15 @@ def set_user_cookie(response, user, extra_data=None):
     if extra_data:
         data.update(extra_data)
     token = serializer.dumps(data)
-    response.set_cookie('user_session', token, httponly=True, max_age=3600)
-
+    
+    response.set_cookie(
+        'user_session',
+        token,
+        httponly=True,
+        secure=True,            # ❗️ Required for HTTPS (prod)
+        samesite='None',        # ❗️ Required for cross-site cookies
+        max_age=3600
+    )
 
 # auth.py (backend)
 
