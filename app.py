@@ -914,10 +914,11 @@ def set_user_cookie(response, user, extra_data=None):
     
     response.set_cookie(
         'user_session',
-        token,
+        value=token,
         httponly=True,
-        secure=True,            # ❗️ Required for HTTPS (prod)
-        samesite='None',        # ❗️ Required for cross-site cookies
+        secure=True,
+        samesite='None',
+        domain='.railway.app',  # Critical for production
         max_age=3600
     )
 
