@@ -919,7 +919,7 @@ def set_user_cookie(response, user, extra_data=None):
         httponly=True,
         secure=True,
         samesite='None',
-        domain='servertikiti-production.up.railway.app',  # Critical for production
+          # Critical for production
         max_age=3600
     )
 
