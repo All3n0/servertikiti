@@ -903,6 +903,7 @@ def delete_ticket_type(id):
 
 #UserLogins/AUTH-ROUTES
 def set_user_cookie(response, user, extra_data=None):
+    print("🔐 Setting user cookie")
     data = {
         'id': user.id,
         'email': user.email,
@@ -911,7 +912,7 @@ def set_user_cookie(response, user, extra_data=None):
     if extra_data:
         data.update(extra_data)
     token = serializer.dumps(data)
-    
+    print("🔐 Cookie token:", token)
     response.set_cookie(
         'user_session',
         value=token,
@@ -975,11 +976,15 @@ def register():
         return jsonify({'error': 'Registration failed'}), 500
 @app.route('/auth/login', methods=['POST'])
 def login():
+    print("🔐 Login attempt")
     data = request.json
+    print("🔐 Login data:", data)
     user = User.query.filter_by(email=data['email']).first()
+    print("🔐 User found:", user)
     if not user or not check_password_hash(user.password_hash, data['password']):
         return jsonify({'error':'Invalid'}), 401
     resp = make_response(jsonify({'message':'Logged in'}))
+    print("🔐 User authenticated, setting cookie")
     set_user_cookie(resp, user)
     return resp
 
@@ -1032,6 +1037,7 @@ def reset_password(token):
 @app.route('/auth/session', methods=['GET'])
 def get_session():
     try:
+        print("🔐 Checking session")
         token = request.cookies.get('user_session')
         print("🔐 Cookie value:", token)
 
