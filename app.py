@@ -21,7 +21,7 @@ app.config.from_object(Config)
 # Initialize extensions
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
-CORS(app, supports_credentials=True, origins=['http://localhost:3000', 'https://tikiti-ij6f.vercel.app/'])
+CORS(app, supports_credentials=True, origins=['http://localhost:3000', 'https://tikiti-1-all3n0s-projects.vercel.app/'])
 
 # Import models after db initialization to avoid circular imports
 from models import Management, Organizer, Event, Venue, Sponsor, TicketType, User, Order, Discount, Ticket, RefundRequest
