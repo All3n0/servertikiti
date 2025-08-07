@@ -2,7 +2,6 @@ from ast import parse
 from mailbox import Message
 import uuid
 from flask import Flask, jsonify, request, make_response,jsonify, session
-from flask_jwt_extended import get_jwt_identity, jwt_required
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_migrate import Migrate
@@ -339,14 +338,10 @@ def checkout():
     })
 
 @app.route('/profile/tickets', methods=['GET'])
-@jwt_required()
-def get_user_tickets():
+@token_required
+def get_user_tickets(user, token_data):
     try:
-        user_id = get_jwt_identity()  # ✅ Get user ID from JWT
-
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
+        user_id = user.id  # or token_data['id']
 
         orders = Order.query.filter_by(user_id=user_id).order_by(Order.order_date.desc()).all()
 
@@ -362,6 +357,7 @@ def get_user_tickets():
     except Exception as e:
         print("Error fetching tickets:", e)
         return jsonify({'error': 'Internal server error'}), 500
+
 # Routes
 @app.route('/organizers/featured/summary')
 def featured_organizers_summary():
