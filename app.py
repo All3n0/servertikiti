@@ -1135,8 +1135,16 @@ def generate_manager_token(manager):
         'role': 'manager',
         'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=TOKEN_EXPIRY_HOURS)
     }
+    print("JWT Payload:", payload)
     token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+
+    # If using PyJWT >= 2.0, this returns a str; else decode it
+    if isinstance(token, bytes):
+        token = token.decode('utf-8')
+
+    print("Encoded JWT:", token)
     return token
+
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -1189,16 +1197,30 @@ def login_management():
     email = data.get('email')
     password = data.get('password')
 
+    print("Login attempt")
+    print(f"Email received: {email}")
+    print(f"Password received: {password}")
+
     manager = Management.query.filter_by(email=email).first()
+    if not manager:
+        print("Manager not found in database")
+        return jsonify({'error': 'Invalid credentials'}), 401
 
-    if manager and check_password_hash(manager.password_hash, password):
-        token = generate_manager_token(manager)
-        return jsonify({
-            'token': token,
-            'manager': manager.to_dict()
-        }), 200
+    print(f"Manager found: {manager.email} (ID: {manager.id})")
+    print("Checking password...")
 
-    return jsonify({'error': 'Invalid credentials'}), 401
+    if not check_password_hash(manager.password_hash, password):
+        print("Password hash mismatch")
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+    print("Password match successful. Generating token...")
+    token = generate_manager_token(manager)
+    print(f"Generated Token: {token}")
+
+    return jsonify({
+        'token': token,
+        'manager': manager.to_dict()
+    }), 200
 
 @app.route('/management/register', methods=['POST'])
 def register_management():
