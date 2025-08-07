@@ -1229,19 +1229,34 @@ def register_management():
     name = data.get('username')
     password = data.get('password')
 
+    print(f"[REGISTER] Attempt from: {email}, Username: {name}")
+
+    if not email or not password or not name:
+        print("[REGISTER] Missing required fields")
+        return jsonify({'error': 'Missing required fields'}), 400
+
     if Management.query.filter_by(email=email).first():
+        print("[REGISTER] Email already exists:", email)
         return jsonify({'error': 'Email already exists'}), 400
 
-    hashed_password = generate_password_hash(password)
-    new_manager = Management(email=email, name=name, password_hash=hashed_password)
-    db.session.add(new_manager)
-    db.session.commit()
+    try:
+        hashed_password = generate_password_hash(password)
+        new_manager = Management(email=email, name=name, password_hash=hashed_password)
+        db.session.add(new_manager)
+        db.session.commit()
 
-    token = generate_manager_token(new_manager)
-    return jsonify({
-        'token': token,
-        'manager': new_manager.to_dict()
-    }), 201
+        token = generate_manager_token(new_manager)
+        print(f"[REGISTER] Success for {email} (ID: {new_manager.id})")
+
+        return jsonify({
+            'token': token,
+            'manager': new_manager.to_dict()
+        }), 201
+
+    except Exception as e:
+        print("[REGISTER] Exception occurred:", str(e))
+        return jsonify({'error': 'Registration failed'}), 500
+
 @app.route('/management/session', methods=['GET'])
 @token_required
 def management_session(current_manager):
