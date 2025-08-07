@@ -1146,20 +1146,23 @@ def decode_token(token):
         return {'error': 'Invalid token'}
 
 
-@app.route('/manager/login', methods=['POST'])
-def manager_login():
-    data = request.get_json()
-    manager = Management.query.filter_by(email=data.get('email')).first()
+@app.route('/management/login', methods=['POST'])
+def login_management():
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
 
-    if not manager or not manager.check_password(data.get('password')):
-        return jsonify({'error': 'Invalid email or password'}), 401
+    manager = Management.query.filter_by(email=email).first()
 
-    token = generate_manager_token(manager)
+    if manager and check_password_hash(manager.password_hash, password):
+        token = generate_manager_token(manager)
+        return jsonify({
+            'token': token,
+            'manager': manager.to_dict()
+        }), 200
 
-    response = jsonify({'message': 'Manager logged in'})
-    response.set_cookie('manager_token', token, httponly=True, samesite='Lax')  # if using cookies
+    return jsonify({'error': 'Invalid credentials'}), 401
 
-    return response
 @app.route('/management/register', methods=['POST'])
 def register_management():
     data = request.json
@@ -1175,19 +1178,16 @@ def register_management():
     db.session.add(new_manager)
     db.session.commit()
 
-    session['management_id'] = new_manager.id
-    return jsonify(new_manager.to_dict()), 201
-@app.route('/management/session')
-def management_session():
-    manager_id = session.get('management_id')
-    if not manager_id:
-        return jsonify({'error': 'Not logged in'}), 401
+    token = generate_manager_token(new_manager)
+    return jsonify({
+        'token': token,
+        'manager': new_manager.to_dict()
+    }), 201
+@app.route('/management/session', methods=['GET'])
+@token_required
+def management_session(current_manager):
+    return jsonify(current_manager.to_dict()), 200
 
-    manager = Management.query.get(manager_id)
-    if not manager:
-        return jsonify({'error': 'Manager not found'}), 404
-
-    return jsonify(manager.to_dict()), 200
 
 @app.route('/management/logout', methods=['DELETE'])
 def management_logout():
