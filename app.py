@@ -340,10 +340,14 @@ def checkout():
 @app.route('/profile/tickets', methods=['GET'])
 def get_user_tickets():
     try:
-        token = request.cookies.get('user_session')
-        if not token:
-            return jsonify({'error': 'Not logged in'}), 401
+        # ✅ Get token from Authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Authorization token missing'}), 401
 
+        token = auth_header.split('Bearer ')[1]
+
+        # ✅ Validate token
         token_data = serializer.loads(token, max_age=3600)
         user_id = token_data['id']
 
@@ -351,8 +355,8 @@ def get_user_tickets():
         if not user:
             return jsonify({'error': 'User not found'}), 404
 
+        # ✅ Fetch and return orders
         orders = Order.query.filter_by(user_id=user_id).order_by(Order.order_date.desc()).all()
-
         result = []
         for order in orders:
             order_data = order.to_dict_full()
@@ -363,12 +367,10 @@ def get_user_tickets():
         return jsonify(result), 200
 
     except BadSignature:
-        return jsonify({'error': 'Invalid or expired session'}), 401
+        return jsonify({'error': 'Invalid or expired token'}), 401
     except Exception as e:
         print("Error fetching tickets:", e)
         return jsonify({'error': 'Internal server error'}), 500
-
-
 # Routes
 @app.route('/organizers/featured/summary')
 def featured_organizers_summary():
