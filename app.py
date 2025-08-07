@@ -1130,19 +1130,29 @@ def switch_to_organizer(user, token_data):
 #         return jsonify({'success': False, 'error': 'Logout failed'}), 500
 @app.route('/management/login', methods=['POST'])
 def login_management():
-    data = request.json
+    data = request.get_json()
     email = data.get('email')
     password = data.get('password')
 
     manager = Management.query.filter_by(email=email).first()
 
-    if manager and check_password_hash(manager.password_hash, password):
-        session['management_id'] = manager.id
-        return jsonify(manager.to_dict()), 200
-    return jsonify({'error': 'Invalid credentials'}), 401
+    if not manager or not check_password_hash(manager.password_hash, password):
+        return jsonify({'error': 'Invalid credentials'}), 401
+
+    # Generate JWT token
+    token = jwt.encode({
+        'manager_id': manager.id,
+        'exp': datetime.datetime.utcnow() + JWT_EXPIRATION_DELTA
+    }, SECRET_KEY)
+
+    return jsonify({
+        'token': token,
+        'manager': manager.to_dict()
+    }), 200
+
 @app.route('/management/register', methods=['POST'])
 def register_management():
-    data = request.json
+    data = request.get_json()
     email = data.get('email')
     name = data.get('username')
     password = data.get('password')
@@ -1155,24 +1165,26 @@ def register_management():
     db.session.add(new_manager)
     db.session.commit()
 
-    session['management_id'] = new_manager.id
-    return jsonify(new_manager.to_dict()), 201
+    # Generate JWT token for new manager
+    token = jwt.encode({
+        'manager_id': new_manager.id,
+        'exp': datetime.datetime.utcnow() + JWT_EXPIRATION_DELTA
+    }, SECRET_KEY)
+
+    return jsonify({
+        'token': token,
+        'manager': new_manager.to_dict()
+    }), 201
+
 @app.route('/management/session')
-def management_session():
-    manager_id = session.get('management_id')
-    if not manager_id:
-        return jsonify({'error': 'Not logged in'}), 401
+@token_required
+def management_session(current_manager):
+    return jsonify(current_manager.to_dict()), 200
 
-    manager = Management.query.get(manager_id)
-    if not manager:
-        return jsonify({'error': 'Manager not found'}), 404
-
-    return jsonify(manager.to_dict()), 200
-
-@app.route('/management/logout', methods=['DELETE'])
+@app.route('/management/logout', methods=['POST'])
 def management_logout():
-    session.pop('management_id', None)
-    return '', 204
+    # With JWT, logout is handled client-side by removing the token
+    return jsonify({'message': 'Successfully logged out'}), 200
 @app.route('/management/dashboard/stats')
 def dashboard_stats():
     # Verify management session
