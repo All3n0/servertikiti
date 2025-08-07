@@ -1132,10 +1132,47 @@ def generate_manager_token(manager):
     payload = {
         'id': manager.id,
         'email': manager.email,
-        'role': 'manager',  # Optional: distinguish from regular users
+        'role': 'manager',
         'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=TOKEN_EXPIRY_HOURS)
     }
-    return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+    token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+    return token
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+
+        # Check Authorization header
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(' ')[1]
+
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+
+            # Optional: check role
+            if data.get('role') != 'manager':
+                return jsonify({'error': 'Unauthorized'}), 403
+
+            from models import Management  # Import inside to avoid circular import
+            current_manager = Management.query.get(data['id'])
+
+            if not current_manager:
+                return jsonify({'error': 'Manager not found'}), 404
+
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        return f(current_manager, *args, **kwargs)
+
+    return decorated
+
 def decode_token(token):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
@@ -1148,7 +1185,7 @@ def decode_token(token):
 
 @app.route('/management/login', methods=['POST'])
 def login_management():
-    data = request.json
+    data = request.get_json()
     email = data.get('email')
     password = data.get('password')
 
