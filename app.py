@@ -340,16 +340,22 @@ def checkout():
 @app.route('/profile/tickets', methods=['GET'])
 def get_user_tickets():
     try:
-        token = request.cookies.get('user_session')
-        if not token:
+        # Check Authorization header instead of cookies
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
             return jsonify({'error': 'Not logged in'}), 401
-
-        token_data = serializer.loads(token, max_age=3600)
+            
+        token = auth_header.split(' ')[1]
+        
+        try:
+            token_data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+            
         user_id = token_data['id']
-
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
+       
 
         orders = Order.query.filter_by(user_id=user_id).order_by(Order.order_date.desc()).all()
 
