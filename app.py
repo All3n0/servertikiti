@@ -1130,60 +1130,83 @@ def switch_to_organizer(user, token_data):
 #         return jsonify({'success': False, 'error': 'Logout failed'}), 500
 @app.route('/management/login', methods=['POST'])
 def login_management():
-    data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
+    try:
+        data = request.json
+        manager = Management.query.filter_by(email=data['email']).first()
 
-    manager = Management.query.filter_by(email=email).first()
+        if not manager or not check_password_hash(manager.password_hash, data['password']):
+            return jsonify({'error': 'Invalid credentials'}), 401
 
-    if not manager or not check_password_hash(manager.password_hash, password):
-        return jsonify({'error': 'Invalid credentials'}), 401
+        token = generate_token(manager)
+        return jsonify({
+            'message': 'Logged in',
+            'token': token,
+            'manager': {
+                'id': manager.id,
+                'name': manager.name,
+                'email': manager.email,
+                'role': manager.role
+            }
+        }), 200
 
-    # Generate JWT token
-    token = jwt.encode({
-        'manager_id': manager.id,
-        'exp': datetime.datetime.utcnow() + JWT_EXPIRATION_DELTA
-    }, SECRET_KEY)
-
-    return jsonify({
-        'token': token,
-        'manager': manager.to_dict()
-    }), 200
+    except Exception as e:
+        print(f"Management login error: {e}")
+        return jsonify({'error': 'Login failed'}), 500
 
 @app.route('/management/register', methods=['POST'])
 def register_management():
-    data = request.get_json()
-    email = data.get('email')
-    name = data.get('username')
-    password = data.get('password')
+    try:
+        data = request.json
 
-    if Management.query.filter_by(email=email).first():
-        return jsonify({'error': 'Email already exists'}), 400
+        if Management.query.filter_by(email=data['email']).first():
+            return jsonify({'error': 'Email already exists'}), 400
 
-    hashed_password = generate_password_hash(password)
-    new_manager = Management(email=email, name=name, password_hash=hashed_password)
-    db.session.add(new_manager)
-    db.session.commit()
+        manager = Management(
+            name=data['username'],
+            email=data['email'],
+            password_hash=generate_password_hash(data['password']),
+            role='manager',
+            created_at=datetime.utcnow()
+        )
+        db.session.add(manager)
+        db.session.commit()
 
-    # Generate JWT token for new manager
-    token = jwt.encode({
-        'manager_id': new_manager.id,
-        'exp': datetime.datetime.utcnow() + JWT_EXPIRATION_DELTA
-    }, SECRET_KEY)
+        token = generate_token(manager)
 
-    return jsonify({
-        'token': token,
-        'manager': new_manager.to_dict()
-    }), 201
+        return jsonify({
+            'message': 'Registered',
+            'token': token,
+            'manager': {
+                'id': manager.id,
+                'name': manager.name,
+                'email': manager.email,
+                'role': manager.role
+            }
+        }), 201
 
-@app.route('/management/session')
+    except Exception as e:
+        db.session.rollback()
+        print(f"Management registration error: {e}")
+        return jsonify({'error': 'Registration failed'}), 500
+
+@app.route('/management/session', methods=['GET'])
 @token_required
-def management_session(current_manager):
-    return jsonify(current_manager.to_dict()), 200
+def management_session(user, token_data):
+    if token_data.get('role') != 'manager':
+        return jsonify({'error': 'Unauthorized'}), 403
+        
+    return jsonify({
+        'manager': {
+            'id': user.id,
+            'name': user.name,
+            'email': user.email,
+            'role': user.role
+        }
+    }), 200
 
 @app.route('/management/logout', methods=['POST'])
 def management_logout():
-    # With JWT, logout is handled client-side by removing the token
+    # JWT is stateless, so logout is handled client-side by removing the token
     return jsonify({'message': 'Successfully logged out'}), 200
 @app.route('/management/dashboard/stats')
 def dashboard_stats():
