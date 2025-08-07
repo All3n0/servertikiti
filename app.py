@@ -7,13 +7,13 @@ from flask_cors import CORS
 from flask_migrate import Migrate
 from config import Config
 from sqlalchemy import func
-from datetime import datetime
+from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import BadSignature, URLSafeTimedSerializer
-
+import jwt
 # Initialize serializer
 serializer = URLSafeTimedSerializer(Config.SECRET_KEY)
-
+SECRET_KEY = 'Allan'
 # Initialize Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -908,26 +908,18 @@ def delete_ticket_type(id):
     return jsonify({'message':'Deleted'}), 204
 
 #UserLogins/AUTH-ROUTES
-def set_user_cookie(response, user, extra_data=None):
-    print("🔐 Setting user cookie")
-    data = {
+def generate_token(user, extra_data=None):
+    payload = {
         'id': user.id,
         'email': user.email,
-        'role': user.role
+        'role': user.role,
+        'exp': datetime.utcnow() + timedelta(hours=1)
     }
     if extra_data:
-        data.update(extra_data)
-    token = serializer.dumps(data)
-    print("🔐 Cookie token:", token)
-    response.set_cookie(
-        'user_session',
-        value=token,
-        httponly=True,
-        secure=True,
-        samesite='None',
-          # Critical for production
-        max_age=3600
-    )
+        payload.update(extra_data)
+
+    token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+    return token
 
 # auth.py (backend)
 
@@ -939,16 +931,13 @@ from datetime import datetime
 def register():
     try:
         data = request.json
-        
-        # Check if username exists
+
         if User.query.filter_by(username=data['username']).first():
             return jsonify({'error': 'Username already exists'}), 400
-            
-        # Check if email exists
+
         if User.query.filter_by(email=data['email']).first():
             return jsonify({'error': 'Email already exists'}), 400
-            
-        # Create new user
+
         user = User(
             username=data['username'],
             email=data['email'],
@@ -956,25 +945,26 @@ def register():
             role='user',
             created_at=datetime.utcnow()
         )
-        
         db.session.add(user)
         db.session.commit()
-        
-        # Create response with success message
-        response = make_response(jsonify({
+
+        token = generate_token(user)
+
+        return jsonify({
             'message': 'Registered',
+            'token': token,
             'user': {
                 'id': user.id,
                 'username': user.username,
                 'email': user.email
             }
-        }), 200)
-        
-        # Set the cookie
-        set_user_cookie(response, user)
+        }), 200
 
-        
-        return response
+    except Exception as e:
+        db.session.rollback()
+        print(f"Registration error: {e}")
+        return jsonify({'error': 'Registration failed'}), 500
+
         
     except Exception as e:
         db.session.rollback()
@@ -982,17 +972,55 @@ def register():
         return jsonify({'error': 'Registration failed'}), 500
 @app.route('/auth/login', methods=['POST'])
 def login():
-    print("🔐 Login attempt")
-    data = request.json
-    print("🔐 Login data:", data)
-    user = User.query.filter_by(email=data['email']).first()
-    print("🔐 User found:", user)
-    if not user or not check_password_hash(user.password_hash, data['password']):
-        return jsonify({'error':'Invalid'}), 401
-    resp = make_response(jsonify({'message':'Logged in'}))
-    print("🔐 User authenticated, setting cookie")
-    set_user_cookie(resp, user)
-    return resp
+    try:
+        data = request.json
+        user = User.query.filter_by(email=data['email']).first()
+
+        if not user or not check_password_hash(user.password_hash, data['password']):
+            return jsonify({'error': 'Invalid credentials'}), 401
+
+        token = generate_token(user)
+        return jsonify({'message': 'Logged in', 'token': token}), 200
+
+    except Exception as e:
+        print(f"Login error: {e}")
+        return jsonify({'error': 'Login failed'}), 500
+from functools import wraps
+
+def decode_token(token):
+    try:
+        data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        return data
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+
+        if 'Authorization' in request.headers:
+            bearer = request.headers.get('Authorization')
+            if bearer and bearer.startswith('Bearer '):
+                token = bearer.split()[1]
+
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+
+        data = decode_token(token)
+        if not data:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+
+        user = User.query.get(data['id'])
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+
+        return f(user, data, *args, **kwargs)
+
+    return decorated
+
 
 
 @app.route('/auth/forgot-password', methods=['POST'])
@@ -1041,60 +1069,26 @@ def reset_password(token):
     set_user_cookie(resp, user)
     return resp
 @app.route('/auth/session', methods=['GET'])
-def get_session():
-    try:
-        print("🔐 Checking session")
-        token = request.cookies.get('user_session')
-        print("🔐 Cookie value:", token)
-
-        if not token:
-            print("🚫 No token found in cookies")
-            return jsonify(None), 200
-
-        token_data = serializer.loads(token, max_age=3600)
-        print("✅ Token data:", token_data)
-
-        user_id = token_data['id']
-        role = token_data.get('role', 'user')
-
-        user = User.query.get(user_id)
-        if not user:
-            print("🚫 User not found in DB")
-            return jsonify(None), 200
-
-        return jsonify({
-            'user': {
-                'id': user.id,
-                'username': user.username,
-                'email': user.email,
-                'role': role
-            }
-        }), 200
-    except Exception as e:
-        print("❌ Session check failed:", e)
-        return jsonify(None), 200
+@token_required
+def get_session(user, token_data):
+    return jsonify({
+        'user': {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'role': token_data.get('role')
+        }
+    }), 200
 
 
 @app.route('/auth/switch-to-organizer', methods=['POST'])
-def switch_to_organizer():
+@token_required
+def switch_to_organizer(user, token_data):
     try:
-        token = request.cookies.get('user_session')
-        if not token:
-            return jsonify({'error': 'No session found'}), 401
-
-        token_data = serializer.loads(token)
-        user_id = token_data.get('id')
-
-        user = User.query.get(user_id)
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
-
-        # Check if already organizer
         existing_organizer = Organizer.query.filter_by(email=user.email).first()
         if existing_organizer:
             return jsonify({'error': 'Already an organizer'}), 400
 
-        # Create organizer record
         organizer = Organizer(
             name=user.username,
             email=user.email,
@@ -1103,30 +1097,31 @@ def switch_to_organizer():
         )
         db.session.add(organizer)
 
-        # Change user role
         user.role = 'organizer'
-
         db.session.commit()
 
-        # Update cookie
-        response = make_response(jsonify({'message': 'Switched to organizer', 'organizer_id': organizer.id}))
-        set_user_cookie(response, user, extra_data={'organizer_id': organizer.id})  # Update helper function
-        return response
+        new_token = generate_token(user, extra_data={'organizer_id': organizer.id})
+
+        return jsonify({
+            'message': 'Switched to organizer',
+            'organizer_id': organizer.id,
+            'token': new_token
+        }), 200
 
     except Exception as e:
         db.session.rollback()
         print(f"Switch error: {e}")
         return jsonify({'error': 'Failed to switch to organizer'}), 500
 
-@app.route('/auth/logout', methods=['POST'])
-def logout():
-    try:
-        response = make_response(jsonify({'success': True, 'message': 'Logged out successfully'}))
-        response.delete_cookie('user_session')
-        return response
-    except Exception as e:
-        print(f"Logout error: {e}")
-        return jsonify({'success': False, 'error': 'Logout failed'}), 500
+# @app.route('/auth/logout', methods=['POST'])
+# def logout():
+#     try:
+#         response = make_response(jsonify({'success': True, 'message': 'Logged out successfully'}))
+#         response.delete_cookie('user_session')
+#         return response
+#     except Exception as e:
+#         print(f"Logout error: {e}")
+#         return jsonify({'success': False, 'error': 'Logout failed'}), 500
 @app.route('/management/login', methods=['POST'])
 def login_management():
     data = request.json
