@@ -1547,6 +1547,11 @@ def get_venue_details(venue_id):
         'updated_at': venue.updated_at.isoformat() if venue.updated_at else None
     }
     return jsonify(venue_data), 200
+@app.after_request
+def apply_cors_headers(response):
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    response.headers['Access-Control-Allow-Origin'] = 'https://tikiti-ij6f.vercel.app'
+    return response
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5557, debug=True)
