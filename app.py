@@ -2,6 +2,7 @@ from ast import parse
 from mailbox import Message
 import uuid
 from flask import Flask, jsonify, request, make_response,jsonify, session
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_migrate import Migrate
@@ -1131,16 +1132,21 @@ def switch_to_organizer(user, token_data):
 @app.route('/management/login', methods=['POST'])
 def login_management():
     try:
-        data = request.json
+        data = request.get_json()
         manager = Management.query.filter_by(email=data['email']).first()
 
         if not manager or not check_password_hash(manager.password_hash, data['password']):
             return jsonify({'error': 'Invalid credentials'}), 401
 
-        token = generate_token(manager)
+        # Create access token
+        access_token = create_access_token(
+            identity=manager.id,
+            additional_claims={'role': manager.role, 'email': manager.email}
+        )
+        
         return jsonify({
             'message': 'Logged in',
-            'token': token,
+            'access_token': access_token,
             'manager': {
                 'id': manager.id,
                 'name': manager.name,
@@ -1156,7 +1162,7 @@ def login_management():
 @app.route('/management/register', methods=['POST'])
 def register_management():
     try:
-        data = request.json
+        data = request.get_json()
 
         if Management.query.filter_by(email=data['email']).first():
             return jsonify({'error': 'Email already exists'}), 400
@@ -1171,11 +1177,15 @@ def register_management():
         db.session.add(manager)
         db.session.commit()
 
-        token = generate_token(manager)
+        # Create access token for the new manager
+        access_token = create_access_token(
+            identity=manager.id,
+            additional_claims={'role': manager.role, 'email': manager.email}
+        )
 
         return jsonify({
             'message': 'Registered',
-            'token': token,
+            'access_token': access_token,
             'manager': {
                 'id': manager.id,
                 'name': manager.name,
@@ -1190,37 +1200,39 @@ def register_management():
         return jsonify({'error': 'Registration failed'}), 500
 
 @app.route('/management/session', methods=['GET'])
-@token_required
-def management_session(user, token_data):
-    if token_data.get('role') != 'manager':
-        return jsonify({'error': 'Unauthorized'}), 403
+@jwt_required()
+def management_session():
+    current_user = get_jwt_identity()
+    manager = Management.query.get(current_user)
+    
+    if not manager:
+        return jsonify({'error': 'Manager not found'}), 404
         
     return jsonify({
         'manager': {
-            'id': user.id,
-            'name': user.name,
-            'email': user.email,
-            'role': user.role
+            'id': manager.id,
+            'name': manager.name,
+            'email': manager.email,
+            'role': manager.role
         }
     }), 200
 
 @app.route('/management/logout', methods=['POST'])
+@jwt_required()
 def management_logout():
-    # JWT is stateless, so logout is handled client-side by removing the token
+    # With JWT, logout is handled client-side by removing the token
     return jsonify({'message': 'Successfully logged out'}), 200
 @app.route('/management/dashboard/stats')
+@jwt_required()
 def dashboard_stats():
-    # Verify management session
-    manager_id = session.get('management_id')
-    if not manager_id:
-        return jsonify({'error': 'Not logged in'}), 401
-
+    # Get the identity from the token
+    current_user = get_jwt_identity()
+    
     # Get counts for dashboard
     total_organizers = Organizer.query.count()
     active_events = Event.query.filter_by(status='approved').count()
-    print(f"Active events: {active_events}")  # Add this line to print active_events)
     pending_events = Event.query.filter_by(status='pending').count()
-    print(f"Pending events: {pending_events}")
+    
     return jsonify({
         'total_organizers': total_organizers,
         'active_events': active_events,
