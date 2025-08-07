@@ -2,7 +2,6 @@ from ast import parse
 from mailbox import Message
 import uuid
 from flask import Flask, jsonify, request, make_response,jsonify, session
-from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
 from flask_migrate import Migrate
@@ -1129,110 +1128,84 @@ def switch_to_organizer(user, token_data):
 #     except Exception as e:
 #         print(f"Logout error: {e}")
 #         return jsonify({'success': False, 'error': 'Logout failed'}), 500
-@app.route('/management/login', methods=['POST'])
-def login_management():
+def generate_manager_token(manager):
+    payload = {
+        'id': manager.id,
+        'email': manager.email,
+        'role': 'manager',  # Optional: distinguish from regular users
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=TOKEN_EXPIRY_HOURS)
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm='HS256')
+def decode_token(token):
     try:
-        data = request.get_json()
-        manager = Management.query.filter_by(email=data['email']).first()
+        payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        return payload  # You can check role here if needed
+    except jwt.ExpiredSignatureError:
+        return {'error': 'Token expired'}
+    except jwt.InvalidTokenError:
+        return {'error': 'Invalid token'}
 
-        if not manager or not check_password_hash(manager.password_hash, data['password']):
-            return jsonify({'error': 'Invalid credentials'}), 401
 
-        # Create access token
-        access_token = create_access_token(
-            identity=manager.id,
-            additional_claims={'role': manager.role, 'email': manager.email}
-        )
-        
-        return jsonify({
-            'message': 'Logged in',
-            'access_token': access_token,
-            'manager': {
-                'id': manager.id,
-                'name': manager.name,
-                'email': manager.email,
-                'role': manager.role
-            }
-        }), 200
+@app.route('/manager/login', methods=['POST'])
+def manager_login():
+    data = request.get_json()
+    manager = Management.query.filter_by(email=data.get('email')).first()
 
-    except Exception as e:
-        print(f"Management login error: {e}")
-        return jsonify({'error': 'Login failed'}), 500
+    if not manager or not manager.check_password(data.get('password')):
+        return jsonify({'error': 'Invalid email or password'}), 401
 
+    token = generate_manager_token(manager)
+
+    response = jsonify({'message': 'Manager logged in'})
+    response.set_cookie('manager_token', token, httponly=True, samesite='Lax')  # if using cookies
+
+    return response
 @app.route('/management/register', methods=['POST'])
 def register_management():
-    try:
-        data = request.get_json()
+    data = request.json
+    email = data.get('email')
+    name = data.get('username')
+    password = data.get('password')
 
-        if Management.query.filter_by(email=data['email']).first():
-            return jsonify({'error': 'Email already exists'}), 400
+    if Management.query.filter_by(email=email).first():
+        return jsonify({'error': 'Email already exists'}), 400
 
-        manager = Management(
-            name=data['username'],
-            email=data['email'],
-            password_hash=generate_password_hash(data['password']),
-            role='manager',
-            created_at=datetime.utcnow()
-        )
-        db.session.add(manager)
-        db.session.commit()
+    hashed_password = generate_password_hash(password)
+    new_manager = Management(email=email, name=name, password_hash=hashed_password)
+    db.session.add(new_manager)
+    db.session.commit()
 
-        # Create access token for the new manager
-        access_token = create_access_token(
-            identity=manager.id,
-            additional_claims={'role': manager.role, 'email': manager.email}
-        )
-
-        return jsonify({
-            'message': 'Registered',
-            'access_token': access_token,
-            'manager': {
-                'id': manager.id,
-                'name': manager.name,
-                'email': manager.email,
-                'role': manager.role
-            }
-        }), 201
-
-    except Exception as e:
-        db.session.rollback()
-        print(f"Management registration error: {e}")
-        return jsonify({'error': 'Registration failed'}), 500
-
-@app.route('/management/session', methods=['GET'])
-@jwt_required()
+    session['management_id'] = new_manager.id
+    return jsonify(new_manager.to_dict()), 201
+@app.route('/management/session')
 def management_session():
-    current_user = get_jwt_identity()
-    manager = Management.query.get(current_user)
-    
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
+    manager = Management.query.get(manager_id)
     if not manager:
         return jsonify({'error': 'Manager not found'}), 404
-        
-    return jsonify({
-        'manager': {
-            'id': manager.id,
-            'name': manager.name,
-            'email': manager.email,
-            'role': manager.role
-        }
-    }), 200
 
-@app.route('/management/logout', methods=['POST'])
-@jwt_required()
+    return jsonify(manager.to_dict()), 200
+
+@app.route('/management/logout', methods=['DELETE'])
 def management_logout():
-    # With JWT, logout is handled client-side by removing the token
-    return jsonify({'message': 'Successfully logged out'}), 200
+    session.pop('management_id', None)
+    return '', 204
 @app.route('/management/dashboard/stats')
-@jwt_required()
 def dashboard_stats():
-    # Get the identity from the token
-    current_user = get_jwt_identity()
-    
+    # Verify management session
+    manager_id = session.get('management_id')
+    if not manager_id:
+        return jsonify({'error': 'Not logged in'}), 401
+
     # Get counts for dashboard
     total_organizers = Organizer.query.count()
     active_events = Event.query.filter_by(status='approved').count()
+    print(f"Active events: {active_events}")  # Add this line to print active_events)
     pending_events = Event.query.filter_by(status='pending').count()
-    
+    print(f"Pending events: {pending_events}")
     return jsonify({
         'total_organizers': total_organizers,
         'active_events': active_events,
