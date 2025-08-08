@@ -1,5 +1,6 @@
 from ast import parse
 from mailbox import Message
+import re
 import uuid
 from flask import Flask, jsonify, request, make_response,jsonify, session
 from flask_sqlalchemy import SQLAlchemy
@@ -34,6 +35,41 @@ CORS(app,
 # Import models after db initialization to avoid circular imports
 from models import Management, Organizer, Event, Venue, Sponsor, TicketType, User, Order, Discount, Ticket, RefundRequest
 #organizer dashboard
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+
+        # Check Authorization header
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(' ')[1]
+
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+
+            # Optional: check role
+            if data.get('role') != 'manager':
+                return jsonify({'error': 'Unauthorized'}), 403
+
+            from models import Management  # Import inside to avoid circular import
+            current_manager = Management.query.get(data['id'])
+
+            if not current_manager:
+                return jsonify({'error': 'Manager not found'}), 404
+
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        return f(current_manager, *args, **kwargs)
+
+    return decorated
 @app.route('/organizers/<int:organizer_id>/dashboard')
 def organizer_dashboard(organizer_id):
     organizer = Organizer.query.get_or_404(organizer_id)
@@ -396,57 +432,81 @@ def featured_organizers_summary():
     
     return jsonify(result)
 @app.route('/organizer/profile', methods=['PATCH'])
-def update_organizer_profile():
+@token_required
+def update_organizer_profile(user, token_data):
     try:
-        token = request.cookies.get('user_session')
-        if not token:
-            return jsonify({'error': 'Not logged in'}), 401
-        
-        data = serializer.loads(token, max_age=3600)
-        user_id = data['id']
-        user = User.query.get(user_id)
+        # Verify user is an organizer
+        if user.role != 'organizer':
+            return jsonify({'error': 'Unauthorized - Organizer role required'}), 403
 
-        if not user or user.role != 'organizer':
-            return jsonify({'error': 'Unauthorized'}), 403
-
-        organizer = Organizer.query.filter_by(email=user.email).first()
+        # Find organizer profile
+        organizer = Organizer.query.filter_by(user_id=user.id).first()
         if not organizer:
-            return jsonify({'error': 'Organizer not found'}), 404
+            return jsonify({'error': 'Organizer profile not found'}), 404
 
-        payload = request.json
-        # Update fields if present in payload
-        for field in ['name', 'email', 'phone', 'logo', 'website', 'description', 'speciality', 'contact_email']:
+        # Get update data
+        payload = request.get_json()
+        if not payload:
+            return jsonify({'error': 'No data provided'}), 400
+
+        # Validate and update fields
+        updatable_fields = {
+            'name': str,
+            'phone': str,
+            'logo': str,
+            'website': str,
+            'description': str,
+            'speciality': str,
+            'contact_email': str
+        }
+
+        for field, field_type in updatable_fields.items():
             if field in payload:
+                # Basic validation
+                if payload[field] is not None and not isinstance(payload[field], field_type):
+                    return jsonify({'error': f'Invalid type for {field}'}), 400
+                
+                # Special validation for email fields
+                if field in ['contact_email'] and payload[field]:
+                    if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', payload[field]):
+                        return jsonify({'error': f'Invalid {field} format'}), 400
+                
+                # Special validation for phone
+                if field == 'phone' and payload[field]:
+                    if not re.match(r'^\+?[\d\s-]{10,}$', payload[field]):
+                        return jsonify({'error': 'Invalid phone number format'}), 400
+                
+                # Special validation for website/logo URLs
+                if field in ['website', 'logo'] and payload[field]:
+                    if not re.match(r'^https?://.+', payload[field]):
+                        return jsonify({'error': f'Invalid {field} URL'}), 400
+                
                 setattr(organizer, field, payload[field])
 
         db.session.commit()
         return jsonify(organizer.to_dict()), 200
 
     except Exception as e:
-        print("Error updating organizer profile:", e)
-        return jsonify({'error': 'Server error'}), 500
-
+        db.session.rollback()
+        print(f"Error updating organizer profile: {e}")
+        return jsonify({'error': 'Failed to update profile'}), 500
 @app.route('/organizer/profile', methods=['GET'])
-def get_organizer_profile():
+@token_required
+def get_organizer_profile(user, token_data):
     try:
-        token = request.cookies.get('user_session')
-        if not token:
-            return jsonify({'error': 'Not logged in'}), 401
-        
-        data = serializer.loads(token, max_age=3600)
-        user_id = data['id']
-        user = User.query.get(user_id)
+        # Check if user is an organizer
+        if user.role != 'organizer':
+            return jsonify({'error': 'Unauthorized - Organizer role required'}), 403
 
-        if not user or user.role != 'organizer':
-            return jsonify({'error': 'Unauthorized'}), 403
-
-        organizer = Organizer.query.filter_by(email=user.email).first()
+        # Find organizer by user ID or email
+        organizer = Organizer.query.filter_by(user_id=user.id).first()
         if not organizer:
             return jsonify({'error': 'Organizer profile not found'}), 404
 
         return jsonify(organizer.to_dict()), 200
+        
     except Exception as e:
-        print("Error getting organizer profile:", e)
+        print(f"Error getting organizer profile: {e}")
         return jsonify({'error': 'Server error'}), 500
 
 @app.route('/events/counts')
@@ -1004,30 +1064,30 @@ def decode_token(token):
     except jwt.InvalidTokenError:
         return None
 
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
+# def token_required(f):
+#     @wraps(f)
+#     def decorated(*args, **kwargs):
+#         token = None
 
-        if 'Authorization' in request.headers:
-            bearer = request.headers.get('Authorization')
-            if bearer and bearer.startswith('Bearer '):
-                token = bearer.split()[1]
+#         if 'Authorization' in request.headers:
+#             bearer = request.headers.get('Authorization')
+#             if bearer and bearer.startswith('Bearer '):
+#                 token = bearer.split()[1]
 
-        if not token:
-            return jsonify({'error': 'Token is missing'}), 401
+#         if not token:
+#             return jsonify({'error': 'Token is missing'}), 401
 
-        data = decode_token(token)
-        if not data:
-            return jsonify({'error': 'Invalid or expired token'}), 401
+#         data = decode_token(token)
+#         if not data:
+#             return jsonify({'error': 'Invalid or expired token'}), 401
 
-        user = User.query.get(data['id'])
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
+#         user = User.query.get(data['id'])
+#         if not user:
+#             return jsonify({'error': 'User not found'}), 404
 
-        return f(user, data, *args, **kwargs)
+#         return f(user, data, *args, **kwargs)
 
-    return decorated
+#     return decorated
 
 
 
