@@ -435,23 +435,23 @@ def featured_organizers_summary():
     return jsonify(result)
 @app.route('/organizer/profile', methods=['PATCH'])
 @token_required
-def update_organizer_profile(user, token_data, user_id):
+def update_organizer_profile(user, token_data):
     try:
-        if user.id != user_id and user.role != 'organizer':
+        # ✅ Ensure only organizers can update their own profile
+        if user.role != 'organizer':
             return jsonify({'error': 'Unauthorized'}), 403
 
-    # Find organizer profile
-        organizer = Organizer.query.filter_by(user_id=user_id).first()
+        # ✅ Find organizer profile for the logged-in user
+        organizer = Organizer.query.filter_by(user_id=user.id).first()
         if not organizer:
             return jsonify({'error': 'Organizer profile not found'}), 404
 
-        # Get update data
+        # ✅ Get update data
         payload = request.get_json()
         if not payload:
             return jsonify({'error': 'No data provided'}), 400
 
-
-        # Validate and update fields
+        # ✅ Allowed fields
         updatable_fields = {
             'name': str,
             'phone': str,
@@ -464,26 +464,28 @@ def update_organizer_profile(user, token_data, user_id):
 
         for field, field_type in updatable_fields.items():
             if field in payload:
-                # Basic validation
-                if payload[field] is not None and not isinstance(payload[field], field_type):
+                value = payload[field]
+
+                # Type check
+                if value is not None and not isinstance(value, field_type):
                     return jsonify({'error': f'Invalid type for {field}'}), 400
-                
-                # Special validation for email fields
-                if field in ['contact_email'] and payload[field]:
-                    if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', payload[field]):
+
+                # Email validation
+                if field == 'contact_email' and value:
+                    if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', value):
                         return jsonify({'error': f'Invalid {field} format'}), 400
-                
-                # Special validation for phone
-                if field == 'phone' and payload[field]:
-                    if not re.match(r'^\+?[\d\s-]{10,}$', payload[field]):
+
+                # Phone validation
+                if field == 'phone' and value:
+                    if not re.match(r'^\+?[\d\s-]{10,}$', value):
                         return jsonify({'error': 'Invalid phone number format'}), 400
-                
-                # Special validation for website/logo URLs
-                if field in ['website', 'logo'] and payload[field]:
-                    if not re.match(r'^https?://.+', payload[field]):
+
+                # URL validation
+                if field in ['website', 'logo'] and value:
+                    if not re.match(r'^https?://.+', value):
                         return jsonify({'error': f'Invalid {field} URL'}), 400
-                
-                setattr(organizer, field, payload[field])
+
+                setattr(organizer, field, value)
 
         db.session.commit()
         return jsonify(organizer.to_dict()), 200
@@ -492,6 +494,7 @@ def update_organizer_profile(user, token_data, user_id):
         db.session.rollback()
         print(f"Error updating organizer profile: {e}")
         return jsonify({'error': 'Failed to update profile'}), 500
+
 
 @app.route('/organizers/<int:user_id>/profile', methods=['GET'])
 @token_required
