@@ -1270,10 +1270,23 @@ def management_session(current_manager):
 def management_logout():
     session.pop('management_id', None)
     return '', 204
+def get_manager_id_from_token():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        return None
+    token = auth_header.split(' ')[1]
+    try:
+        decoded = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+        return decoded.get('id')
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
 @app.route('/management/dashboard/stats')
 def dashboard_stats():
     # Verify management session
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1292,7 +1305,7 @@ def dashboard_stats():
 @app.route('/management/events/pending')
 def pending_events():
     # Verify management session
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1314,7 +1327,7 @@ def pending_events():
 @app.route('/management/events/<int:event_id>/approve', methods=['POST'])
 def approve_event(event_id):
     # Verify management session
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1331,7 +1344,7 @@ def approve_event(event_id):
 @app.route('/management/events/<int:event_id>/reject', methods=['POST'])
 def reject_event(event_id):
     # Verify management session
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1347,7 +1360,7 @@ def reject_event(event_id):
 @app.route('/management/venues/pending')
 def pending_venues():
     # Verify management session
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1360,7 +1373,7 @@ def pending_venues():
 @app.route('/management/organizers')
 def all_organizers():
     # Verify management session
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1371,7 +1384,7 @@ def all_organizers():
 # Get all events (for management view)
 @app.route('/management/events')
 def all_events():
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1393,7 +1406,7 @@ def all_events():
 # Get single event details
 @app.route('/management/events/<int:event_id>')
 def get_event_details_for_management(event_id):
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1421,7 +1434,7 @@ def get_event_details_for_management(event_id):
 # Contact organizer endpoint
 @app.route('/management/organizers/<int:organizer_id>')
 def get_organizer_details(organizer_id):
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1569,7 +1582,7 @@ def get_organizer_sponsors(organizer_id):
     }), 200
 @app.route('/management/venues/<int:venue_id>/approve', methods=['PATCH', 'POST'])
 def approve_venue(venue_id):
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1590,7 +1603,7 @@ def approve_venue(venue_id):
 
 @app.route('/management/venues/<int:venue_id>/reject', methods=['PATCH', 'POST'])
 def reject_venue(venue_id):
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1610,7 +1623,7 @@ def reject_venue(venue_id):
     }), 200
 @app.route('/management/venues', methods=['GET'])
 def get_all_venues():
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
@@ -1633,7 +1646,7 @@ def get_all_venues():
     return jsonify(venues_data), 200
 @app.route('/management/venues/<int:venue_id>', methods=['GET'])
 def get_venue_details(venue_id):
-    manager_id = session.get('management_id')
+    manager_id = get_manager_id_from_token()
     if not manager_id:
         return jsonify({'error': 'Not logged in'}), 401
 
