@@ -437,7 +437,7 @@ def featured_organizers_summary():
 @token_required
 def update_organizer_profile(user, token_data, user_id):
     try:
-        if user.id != user_id and user.role != 'admin':
+        if user.id != user_id and user.role != 'organizer':
             return jsonify({'error': 'Unauthorized'}), 403
 
     # Find organizer profile
