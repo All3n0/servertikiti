@@ -1664,6 +1664,93 @@ def get_venue_details(venue_id):
         'updated_at': venue.updated_at.isoformat() if venue.updated_at else None
     }
     return jsonify(venue_data), 200
+@app.route('/backup-data', methods=['GET'])
+def backup_data():
+    data = {
+        "organizers": [o.to_dict() for o in Organizer.query.all()],
+        "sponsors": [s.to_dict() for s in Sponsor.query.all()],
+        "venues": [v.to_dict() for v in Venue.query.all()],
+        "events": [e.to_dict() for e in Event.query.all()],
+        "ticket_types": [t.to_dict() for t in TicketType.query.all()],
+        "users": [u.to_dict() for u in User.query.all()],
+        "orders": [o.to_dict() for o in Order.query.all()],
+        "discounts": [d.to_dict() for d in Discount.query.all()],
+        "tickets": [t.to_dict() for t in Ticket.query.all()],
+        "refund_requests": [r.to_dict() for r in RefundRequest.query.all()],
+        "management": [m.to_dict() for m in Management.query.all()],
+    }
+    return jsonify(data), 200
+@app.route('/restore-data', methods=['POST'])
+def restore_data():
+    payload = request.get_json()
+
+    # 1. Organizers
+    for item in payload.get("organizers", []):
+        if not Organizer.query.get(item['id']):
+            db.session.add(Organizer(**item))
+
+    # 2. Sponsors
+    for item in payload.get("sponsors", []):
+        if not Sponsor.query.get(item['id']):
+            db.session.add(Sponsor(**item))
+
+    # 3. Venues
+    for item in payload.get("venues", []):
+        if not Venue.query.get(item['id']):
+            db.session.add(Venue(**item))
+
+    # 4. Events
+    for item in payload.get("events", []):
+        if not Event.query.get(item['id']):
+            sponsors_data = item.pop('sponsors', [])
+            ticket_types_data = item.pop('ticket_types', [])
+            event = Event(**item)
+            db.session.add(event)
+            db.session.flush()  # get event.id
+
+            # Restore sponsors relationship
+            for sponsor in sponsors_data:
+                s_obj = Sponsor.query.get(sponsor['id'])
+                if s_obj:
+                    event.sponsors.append(s_obj)
+
+            # Restore ticket types
+            for tt in ticket_types_data:
+                if not TicketType.query.get(tt['id']):
+                    db.session.add(TicketType(**tt))
+
+    # 5. Users
+    for item in payload.get("users", []):
+        if not User.query.get(item['id']):
+            db.session.add(User(**item))
+
+    # 6. Orders
+    for item in payload.get("orders", []):
+        if not Order.query.get(item['id']):
+            db.session.add(Order(**item))
+
+    # 7. Discounts
+    for item in payload.get("discounts", []):
+        if not Discount.query.get(item['id']):
+            db.session.add(Discount(**item))
+
+    # 8. Tickets
+    for item in payload.get("tickets", []):
+        if not Ticket.query.get(item['id']):
+            db.session.add(Ticket(**item))
+
+    # 9. Refund Requests
+    for item in payload.get("refund_requests", []):
+        if not RefundRequest.query.get(item['id']):
+            db.session.add(RefundRequest(**item))
+
+    # 10. Management accounts
+    for item in payload.get("management", []):
+        if not Management.query.get(item['id']):
+            db.session.add(Management(**item))
+
+    db.session.commit()
+    return jsonify({"status": "success"}), 200
 
 
 if __name__ == '__main__':
