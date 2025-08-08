@@ -12,7 +12,6 @@ from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 import jwt
-from functools import wraps
 # Initialize serializer
 serializer = URLSafeTimedSerializer(Config.SECRET_KEY)
 SECRET_KEY = 'Allan'
@@ -491,6 +490,7 @@ def update_organizer_profile(user, token_data):
         db.session.rollback()
         print(f"Error updating organizer profile: {e}")
         return jsonify({'error': 'Failed to update profile'}), 500
+
 @app.route('/organizer/profile', methods=['GET'])
 @token_required
 def get_organizer_profile(user, token_data):
@@ -1065,30 +1065,30 @@ def decode_token(token):
     except jwt.InvalidTokenError:
         return None
 
-# def token_required(f):
-#     @wraps(f)
-#     def decorated(*args, **kwargs):
-#         token = None
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
 
-#         if 'Authorization' in request.headers:
-#             bearer = request.headers.get('Authorization')
-#             if bearer and bearer.startswith('Bearer '):
-#                 token = bearer.split()[1]
+        if 'Authorization' in request.headers:
+            bearer = request.headers.get('Authorization')
+            if bearer and bearer.startswith('Bearer '):
+                token = bearer.split()[1]
 
-#         if not token:
-#             return jsonify({'error': 'Token is missing'}), 401
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
 
-#         data = decode_token(token)
-#         if not data:
-#             return jsonify({'error': 'Invalid or expired token'}), 401
+        data = decode_token(token)
+        if not data:
+            return jsonify({'error': 'Invalid or expired token'}), 401
 
-#         user = User.query.get(data['id'])
-#         if not user:
-#             return jsonify({'error': 'User not found'}), 404
+        user = User.query.get(data['id'])
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
 
-#         return f(user, data, *args, **kwargs)
+        return f(user, data, *args, **kwargs)
 
-#     return decorated
+    return decorated
 
 
 
