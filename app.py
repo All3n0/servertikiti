@@ -14,6 +14,8 @@ import jwt
 # Initialize serializer
 serializer = URLSafeTimedSerializer(Config.SECRET_KEY)
 SECRET_KEY = 'Allan'
+TOKEN_EXPIRY_HOURS = 24  # Token valid for 24 hours
+
 # Initialize Flask app
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -1133,7 +1135,7 @@ def generate_manager_token(manager):
         'id': manager.id,
         'email': manager.email,
         'role': 'manager',
-        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=TOKEN_EXPIRY_HOURS)
+        'exp': datetime.utcnow() + timedelta(hours=TOKEN_EXPIRY_HOURS)
     }
     print("JWT Payload:", payload)
     token = jwt.encode(payload, SECRET_KEY, algorithm='HS256')
@@ -1144,6 +1146,7 @@ def generate_manager_token(manager):
 
     print("Encoded JWT:", token)
     return token
+
 
 def token_required(f):
     @wraps(f)
