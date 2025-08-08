@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 import jwt
+from functools import wraps
+
 # Initialize serializer
 serializer = URLSafeTimedSerializer(Config.SECRET_KEY)
 SECRET_KEY = 'Allan'
