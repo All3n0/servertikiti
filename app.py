@@ -435,14 +435,13 @@ def featured_organizers_summary():
     return jsonify(result)
 @app.route('/organizer/profile', methods=['PATCH'])
 @token_required
-def update_organizer_profile(user, token_data):
+def update_organizer_profile(user, token_data, user_id):
     try:
-        # Verify user is an organizer
-        if user.role != 'organizer':
-            return jsonify({'error': 'Unauthorized - Organizer role required'}), 403
+        if user.id != user_id and user.role != 'admin':
+            return jsonify({'error': 'Unauthorized'}), 403
 
-        # Find organizer profile
-        organizer = Organizer.query.filter_by(user_id=user.id).first()
+    # Find organizer profile
+        organizer = Organizer.query.filter_by(user_id=user_id).first()
         if not organizer:
             return jsonify({'error': 'Organizer profile not found'}), 404
 
@@ -450,6 +449,7 @@ def update_organizer_profile(user, token_data):
         payload = request.get_json()
         if not payload:
             return jsonify({'error': 'No data provided'}), 400
+
 
         # Validate and update fields
         updatable_fields = {
@@ -493,16 +493,16 @@ def update_organizer_profile(user, token_data):
         print(f"Error updating organizer profile: {e}")
         return jsonify({'error': 'Failed to update profile'}), 500
 
-@app.route('/organizer/profile', methods=['GET'])
+@app.route('/organizers/<int:user_id>/profile', methods=['GET'])
 @token_required
-def get_organizer_profile(user, token_data):
+def get_organizer_profile_by_user(user, token_data, user_id):
     try:
-        # Check if user is an organizer
-        if user.role != 'organizer':
-            return jsonify({'error': 'Unauthorized - Organizer role required'}), 403
+        # Verify the requesting user matches the requested user_id or is admin
+        if user.id != user_id and user.role != 'admin':
+            return jsonify({'error': 'Unauthorized'}), 403
 
-        # Find organizer by user ID or email
-        organizer = Organizer.query.filter_by(user_id=user.id).first()
+        # Find organizer by user ID
+        organizer = Organizer.query.filter_by(user_id=user_id).first()
         if not organizer:
             return jsonify({'error': 'Organizer profile not found'}), 404
 
