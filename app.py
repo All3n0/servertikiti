@@ -441,11 +441,13 @@ from functools import wraps
 @app.route('/organizers/profile', methods=['GET'])
 @token_required
 def get_organizer_profile(user, token_data):
+    print("Token data:", token_data)  # Debugging line
     if token_data.get('role') != 'organizer':
+        print("Unauthorized")
         return jsonify({"error": "Unauthorized"}), 401
     # Get organizer using email from session
     organizer = Organizer.query.filter_by(email=user.email).first()
-
+    print("Organizer found:", organizer)  # Debugging line
     if not organizer:
         return jsonify({"error": "Organizer profile not found"}), 404
 
