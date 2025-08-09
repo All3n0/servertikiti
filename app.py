@@ -437,90 +437,80 @@ import re
 from flask import request, jsonify
 from functools import wraps
 
-# GET Organizer Profile
-@app.route('/organizer/profile', methods=['GET'])
+# ✅ GET: Organizer profile
+@app.route('/organizers/profile', methods=['GET'])
 @token_required
 def get_organizer_profile(user, token_data):
-    # Organizer email from user session
+    # Get organizer using email from session
     organizer = Organizer.query.filter_by(email=user.email).first()
-    
+
     if not organizer:
         return jsonify({"error": "Organizer profile not found"}), 404
 
-    return jsonify({"organizer": organizer.to_dict()}), 200
+    return jsonify(organizer.to_dict()), 200
 
 
-# PATCH Organizer Profile
-@app.route('/organizer/profile', methods=['PATCH'])
+# ✅ PATCH: Update Organizer profile
+@app.route('/organizers/profile', methods=['PATCH'])
 @token_required
 def update_organizer_profile(user, token_data):
     organizer = Organizer.query.filter_by(email=user.email).first()
-    
+
     if not organizer:
         return jsonify({"error": "Organizer profile not found"}), 404
 
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No input data provided"}), 400
-
-    # --- VALIDATIONS ---
+    data = request.get_json() or {}
     errors = {}
 
-    # Name validation
-    if "name" in data:
-        if not isinstance(data["name"], str) or len(data["name"].strip()) < 2:
-            errors["name"] = "Name must be at least 2 characters long."
-    
-    # Email validation
-    if "email" in data:
-        if not isinstance(data["email"], str) or "@" not in data["email"]:
-            errors["email"] = "Invalid email format."
-    
-    # Phone validation
+    # --- Validations ---
+    def validate_length(field, min_len=None, max_len=None):
+        if field in data and isinstance(data[field], str):
+            value = data[field].strip()
+            if min_len and len(value) < min_len:
+                errors[field] = f"{field.capitalize()} must be at least {min_len} characters."
+            if max_len and len(value) > max_len:
+                errors[field] = f"{field.capitalize()} cannot exceed {max_len} characters."
+
+    validate_length("name", min_len=2, max_len=100)
+    validate_length("speciality", max_len=100)
+    validate_length("description", max_len=2000)
+
     if "phone" in data:
         if not isinstance(data["phone"], str) or len(data["phone"].strip()) < 7:
             errors["phone"] = "Phone number must be at least 7 digits."
 
-    # Contact Email validation
     if "contact_email" in data:
-        if not isinstance(data["contact_email"], str) or "@" not in data["contact_email"]:
+        if "@" not in data["contact_email"]:
             errors["contact_email"] = "Invalid contact email format."
 
-    # Website validation (optional but format check)
-    if "website" in data:
-        if not isinstance(data["website"], str) or not data["website"].startswith(("http://", "https://")):
+    if "website" in data and data["website"]:
+        if not data["website"].startswith(("http://", "https://")):
             errors["website"] = "Website must start with http:// or https://"
 
-    # Rating validation (if included)
-    if "rating" in data:
-        try:
-            rating_val = float(data["rating"])
-            if rating_val < 0 or rating_val > 5:
-                errors["rating"] = "Rating must be between 0 and 5."
-        except ValueError:
-            errors["rating"] = "Rating must be a number."
+    if "logo" in data and data["logo"]:
+        if not data["logo"].startswith(("http://", "https://")):
+            errors["logo"] = "Logo URL must start with http:// or https://"
 
     if errors:
-        return jsonify({"errors": errors}), 400
+        return jsonify({"details": errors}), 400
 
-    # --- UPDATE FIELDS ---
+    # --- Update fields ---
     for field in [
-        "name", "email", "phone", "logo", "website",
-        "description", "speciality", "contact_email", "rating"
+        "name", "phone", "logo", "website",
+        "description", "speciality", "contact_email"
     ]:
         if field in data:
-            setattr(organizer, field, data[field])
+            setattr(organizer, field, data[field].strip() if isinstance(data[field], str) else data[field])
 
     try:
         db.session.commit()
+        return jsonify({
+            "message": "Organizer profile updated successfully",
+            "organizer": organizer.to_dict()
+        }), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Database error: {str(e)}"}), 500
-
-    return jsonify({
-        "message": "Organizer profile updated successfully",
-        "organizer": organizer.to_dict()
-    }), 200
 @app.route('/events/counts')
 def event_counts_by_category():
     counts = db.session.query(
