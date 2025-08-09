@@ -438,92 +438,57 @@ from flask import request, jsonify
 from functools import wraps
 
 # ✅ GET: Organizer profile
-@app.route('/organizers/user/<int:user_id>', methods=['GET'])
+@app.route('/organizer/details', methods=['GET'])
 @token_required
-def get_organizer_profile_by_user(user, token_data, user_id):
-    print("Token data:", token_data)  # Debugging line
-    if token_data.get('role') != 'organizer':
-        return jsonify({'error': 'Forbidden'}), 403
-    print("User ID:", user_id)  # Debugging line
-    organizer = Organizer.query.filter_by(user_id=user_id).first()
-    print("Organizer found:", organizer)  # Debugging line
-    if not organizer:
-        return jsonify({'error': 'Not found'}), 404
-    
-    return jsonify(organizer.to_dict()), 200
-@app.route('/organizers/user/<int:user_id>/profile', methods=['OPTIONS'])
-def options_profile(user_id):
-    response = jsonify({'status': 'ok'})
-    response.headers.add("Access-Control-Allow-Origin", "https://tikiti-ij6f.vercel.app")
-    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
-    response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
-    return response
+def get_organizer_details(user, token_data):
+    if user.role != 'organizer':
+        return jsonify({'error': 'Access denied, only organizers can view this data'}), 403
 
-
-# ✅ PATCH: Update Organizer profile
-@app.route('/organizers/profile', methods=['PATCH'])
-@token_required
-def update_organizer_profile(user, token_data):
-    if token_data.get('role') != 'organizer':
-        return jsonify({"error": "Unauthorized"}), 401
     organizer = Organizer.query.filter_by(email=user.email).first()
-
     if not organizer:
-        return jsonify({"error": "Organizer profile not found"}), 404
+        return jsonify({'error': 'Organizer profile not found'}), 404
+
+    return jsonify({'organizer': organizer.to_dict()}), 200
+
+
+# ✅ Update organizer details
+@app.route('/organizer/details', methods=['PUT'])
+@token_required
+def update_organizer_details(user, token_data):
+    if user.role != 'organizer':
+        return jsonify({'error': 'Access denied, only organizers can update this data'}), 403
+
+    organizer = Organizer.query.filter_by(email=user.email).first()
+    if not organizer:
+        return jsonify({'error': 'Organizer profile not found'}), 404
 
     data = request.get_json() or {}
-    errors = {}
 
-    # --- Validations ---
-    def validate_length(field, min_len=None, max_len=None):
-        if field in data and isinstance(data[field], str):
-            value = data[field].strip()
-            if min_len and len(value) < min_len:
-                errors[field] = f"{field.capitalize()} must be at least {min_len} characters."
-            if max_len and len(value) > max_len:
-                errors[field] = f"{field.capitalize()} cannot exceed {max_len} characters."
+    # 🔹 Validation
+    required_fields = ['name', 'phone', 'contact_email']
+    for field in required_fields:
+        if field not in data or not str(data[field]).strip():
+            return jsonify({'error': f'{field} is required'}), 400
 
-    validate_length("name", min_len=2, max_len=100)
-    validate_length("speciality", max_len=100)
-    validate_length("description", max_len=2000)
+    if len(data['name']) > 100:
+        return jsonify({'error': 'Name cannot exceed 100 characters'}), 400
+    if len(data['phone']) > 20:
+        return jsonify({'error': 'Phone number cannot exceed 20 characters'}), 400
+    if '@' not in data['contact_email']:
+        return jsonify({'error': 'Invalid contact email'}), 400
 
-    if "phone" in data:
-        if not isinstance(data["phone"], str) or len(data["phone"].strip()) < 7:
-            errors["phone"] = "Phone number must be at least 7 digits."
+    # 🔹 Update fields
+    organizer.name = data.get('name', organizer.name)
+    organizer.phone = data.get('phone', organizer.phone)
+    organizer.speciality = data.get('speciality', organizer.speciality)
+    organizer.description = data.get('description', organizer.description)
+    organizer.logo = data.get('logo', organizer.logo)
+    organizer.website = data.get('website', organizer.website)
+    organizer.contact_email = data.get('contact_email', organizer.contact_email)
 
-    if "contact_email" in data:
-        if "@" not in data["contact_email"]:
-            errors["contact_email"] = "Invalid contact email format."
+    db.session.commit()
 
-    if "website" in data and data["website"]:
-        if not data["website"].startswith(("http://", "https://")):
-            errors["website"] = "Website must start with http:// or https://"
-
-    if "logo" in data and data["logo"]:
-        if not data["logo"].startswith(("http://", "https://")):
-            errors["logo"] = "Logo URL must start with http:// or https://"
-
-    if errors:
-        return jsonify({"details": errors}), 400
-
-    # --- Update fields ---
-    for field in [
-        "name", "phone", "logo", "website",
-        "description", "speciality", "contact_email"
-    ]:
-        if field in data:
-            setattr(organizer, field, data[field].strip() if isinstance(data[field], str) else data[field])
-
-    try:
-        db.session.commit()
-        return jsonify({
-            "message": "Organizer profile updated successfully",
-            "organizer": organizer.to_dict()
-        }), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"Database error: {str(e)}"}), 500
-
+    return jsonify({'message': 'Organizer details updated successfully', 'organizer': organizer.to_dict()}), 200
 @app.route('/events/counts')
 def event_counts_by_category():
     counts = db.session.query(
