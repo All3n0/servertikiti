@@ -552,9 +552,9 @@ def update_organizer_profile(user, token_data):
         db.session.rollback()
         print(f"Error updating organizer profile: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
-@app.route('/organizers/<int:organizer_id>/profile', methods=['GET'])
+@app.route('/organizers/profile', methods=['GET'])
 @token_required
-def get_organizer_profile(user, token_data, organizer_id):
+def get_organizer_profile(user, token_data):
     try:
         print(f"Token data: {token_data}")
         print(f"User object: {user}")
@@ -563,10 +563,7 @@ def get_organizer_profile(user, token_data, organizer_id):
         if token_data.get('role') != 'organizer':
             return jsonify({'error': 'Only organizers can access this endpoint'}), 403
             
-        # Verify the requested profile belongs to the user
-        if user.id != organizer_id:
-            return jsonify({'error': 'You can only access your own profile'}), 403
-            
+        # Find organizer by user_id
         organizer = Organizer.query.filter_by(user_id=user.id).first()
         if not organizer:
             return jsonify({'error': 'Organizer profile not found'}), 404
@@ -575,8 +572,7 @@ def get_organizer_profile(user, token_data, organizer_id):
 
     except Exception as e:
         print(f"Error fetching organizer profile: {str(e)}")
-        return jsonify({'error': 'Failed to fetch organizer profile'}), 500
-@app.route('/events/counts')
+        return jsonify({'error': 'Failed to fetch organizer profile'}), 500@app.route('/events/counts')
 def event_counts_by_category():
     counts = db.session.query(
         Event.category,
