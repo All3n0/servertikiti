@@ -60,19 +60,34 @@ def manager_token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
+    # Check Authorization header
         if 'Authorization' in request.headers:
-            bearer = request.headers.get('Authorization')
-            if bearer and bearer.startswith('Bearer '):
-                token = bearer.split()[1]
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(' ')[1]
+
         if not token:
             return jsonify({'error': 'Token is missing'}), 401
-        data = decode_token(token)
-        if not data or data.get('role') != 'manager':
-            return jsonify({'error': 'Unauthorized'}), 403
-        manager = Management.query.get(data['id'])
-        if not manager:
-            return jsonify({'error': 'Manager not found'}), 404
-        return f(manager, data, *args, **kwargs)
+
+        try:
+            data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+
+            
+            if data.get('role') != 'manager':
+                return jsonify({'error': 'Unauthorized'}), 403
+
+            from models import Management  
+            current_manager = Management.query.get(data['id'])
+
+            if not current_manager:
+                return jsonify({'error': 'Manager not found'}), 404
+
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+
+        return f(current_manager, *args, **kwargs)
     return decorated
 @app.route('/organizers/<int:organizer_id>/dashboard')
 def organizer_dashboard(organizer_id):
