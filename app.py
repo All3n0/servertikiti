@@ -556,22 +556,26 @@ def update_organizer_profile(user, token_data):
 @token_required
 def get_organizer_profile(user, token_data, organizer_id):
     try:
-        print(token_data)
-        # Verify the user is an organizer and has access to this profile
-        if token_data.get('role') != 'organizer' or user.id != organizer_id:
-            return jsonify({'error': 'Unauthorized access'}), 403
-        print(f"Fetching profile for organizer ID: {organizer_id}")
-        organizer = Organizer.query.get(organizer_id)
-        print(f"Organizer found: {organizer}")
+        print(f"Token data: {token_data}")
+        print(f"User object: {user}")
+        
+        # Verify the user is an organizer
+        if token_data.get('role') != 'organizer':
+            return jsonify({'error': 'Only organizers can access this endpoint'}), 403
+            
+        # Verify the requested profile belongs to the user
+        if user.id != organizer_id:
+            return jsonify({'error': 'You can only access your own profile'}), 403
+            
+        organizer = Organizer.query.filter_by(user_id=user.id).first()
         if not organizer:
-            return jsonify({'error': 'Organizer not found'}), 404
+            return jsonify({'error': 'Organizer profile not found'}), 404
 
         return jsonify(organizer.to_dict()), 200
 
     except Exception as e:
-        print(f"Error fetching organizer profile: {e}")
+        print(f"Error fetching organizer profile: {str(e)}")
         return jsonify({'error': 'Failed to fetch organizer profile'}), 500
-
 @app.route('/events/counts')
 def event_counts_by_category():
     counts = db.session.query(
