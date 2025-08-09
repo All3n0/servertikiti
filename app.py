@@ -438,57 +438,49 @@ from flask import request, jsonify
 from functools import wraps
 
 # ✅ GET: Organizer profile
-@app.route('/organizer/details', methods=['GET'])
+@app.route('/organizer/profile', methods=['PATCH'])
 @token_required
-def get_organizer_details_for_profile(user, token_data):
-    if user.role.lower() != 'organizer':
-        return jsonify({'error': 'Access denied, only organizers can view this data'}), 403
+def update_organizer_profile(user, token_data):
+    try:
+        if user.role != 'organizer':
+            return jsonify({'error': 'Unauthorized'}), 403
 
-    organizer = Organizer.query.filter_by(email=user.email).first()
-    if not organizer:
-        return jsonify({'error': 'Organizer profile not found'}), 404
+        organizer = Organizer.query.filter_by(email=user.email).first()
+        if not organizer:
+            return jsonify({'error': 'Organizer not found'}), 404
 
-    return jsonify({'organizer': organizer.to_dict()}), 200
+        payload = request.json
+        # Update fields if present in payload
+        for field in ['name', 'email', 'phone', 'logo', 'website', 'description', 'speciality', 'contact_email']:
+            if field in payload:
+                setattr(organizer, field, payload[field])
+
+        db.session.commit()
+        return jsonify(organizer.to_dict()), 200
+
+    except Exception as e:
+        print("Error updating organizer profile:", e)
+        return jsonify({'error': 'Server error'}), 500
 
 
-# ✅ Update organizer details
-@app.route('/organizer/details', methods=['PUT'])
+@app.route('/organizer/profile', methods=['GET'])
 @token_required
-def update_organizer_details(user, token_data):
-    if user.role != 'organizer':
-        return jsonify({'error': 'Access denied, only organizers can update this data'}), 403
+def get_organizer_profile(user, token_data):
+    try:
+        if user.role != 'organizer':
+            return jsonify({'error': 'Unauthorized'}), 403
 
-    organizer = Organizer.query.filter_by(email=user.email).first()
-    if not organizer:
-        return jsonify({'error': 'Organizer profile not found'}), 404
+        organizer = Organizer.query.filter_by(email=user.email).first()
+        if not organizer:
+            return jsonify({'error': 'Organizer profile not found'}), 404
 
-    data = request.get_json() or {}
+        return jsonify(organizer.to_dict()), 200
 
-    # 🔹 Validation
-    required_fields = ['name', 'phone', 'contact_email']
-    for field in required_fields:
-        if field not in data or not str(data[field]).strip():
-            return jsonify({'error': f'{field} is required'}), 400
+    except Exception as e:
+        print("Error getting organizer profile:", e)
+        return jsonify({'error': 'Server error'}), 500
 
-    if len(data['name']) > 100:
-        return jsonify({'error': 'Name cannot exceed 100 characters'}), 400
-    if len(data['phone']) > 20:
-        return jsonify({'error': 'Phone number cannot exceed 20 characters'}), 400
-    if '@' not in data['contact_email']:
-        return jsonify({'error': 'Invalid contact email'}), 400
 
-    # 🔹 Update fields
-    organizer.name = data.get('name', organizer.name)
-    organizer.phone = data.get('phone', organizer.phone)
-    organizer.speciality = data.get('speciality', organizer.speciality)
-    organizer.description = data.get('description', organizer.description)
-    organizer.logo = data.get('logo', organizer.logo)
-    organizer.website = data.get('website', organizer.website)
-    organizer.contact_email = data.get('contact_email', organizer.contact_email)
-
-    db.session.commit()
-
-    return jsonify({'message': 'Organizer details updated successfully', 'organizer': organizer.to_dict()}), 200
 @app.route('/events/counts')
 def event_counts_by_category():
     counts = db.session.query(
