@@ -41,36 +41,38 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-
-        # Check Authorization header
         if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            if auth_header.startswith('Bearer '):
-                token = auth_header.split(' ')[1]
-
+            bearer = request.headers.get('Authorization')
+            if bearer and bearer.startswith('Bearer '):
+                token = bearer.split()[1]
         if not token:
             return jsonify({'error': 'Token is missing'}), 401
+        data = decode_token(token)
+        if not data:
+            return jsonify({'error': 'Invalid or expired token'}), 401
+        user = User.query.get(data['id'])
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        return f(user, data, *args, **kwargs)
+    return decorated
 
-        try:
-            data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
-
-            # Optional: check role
-            if data.get('role') != 'manager':
-                return jsonify({'error': 'Unauthorized'}), 403
-
-            from models import Management  # Import inside to avoid circular import
-            current_manager = Management.query.get(data['id'])
-
-            if not current_manager:
-                return jsonify({'error': 'Manager not found'}), 404
-
-        except jwt.ExpiredSignatureError:
-            return jsonify({'error': 'Token has expired'}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({'error': 'Invalid token'}), 401
-
-        return f(current_manager, *args, **kwargs)
-
+def manager_token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            bearer = request.headers.get('Authorization')
+            if bearer and bearer.startswith('Bearer '):
+                token = bearer.split()[1]
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+        data = decode_token(token)
+        if not data or data.get('role') != 'manager':
+            return jsonify({'error': 'Unauthorized'}), 403
+        manager = Management.query.get(data['id'])
+        if not manager:
+            return jsonify({'error': 'Manager not found'}), 404
+        return f(manager, data, *args, **kwargs)
     return decorated
 @app.route('/organizers/<int:organizer_id>/dashboard')
 def organizer_dashboard(organizer_id):
@@ -470,7 +472,7 @@ def update_organizer_profile(user, token_data):
 
 
 @app.route('/organizer/profile', methods=['GET'])
-@manager_token_required
+@token_required
 def get_organizer_profile(user, token_data):
     try:
         print(f"[DEBUG] GET /organizer/profile called by user {user.email} with role {user.role}")
@@ -1046,30 +1048,30 @@ def decode_token(token):
     except jwt.InvalidTokenError:
         return None
 
-def manager_token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
+# def manager_token_required(f):
+#     @wraps(f)
+#     def decorated(*args, **kwargs):
+#         token = None
 
-        if 'Authorization' in request.headers:
-            bearer = request.headers.get('Authorization')
-            if bearer and bearer.startswith('Bearer '):
-                token = bearer.split()[1]
+#         if 'Authorization' in request.headers:
+#             bearer = request.headers.get('Authorization')
+#             if bearer and bearer.startswith('Bearer '):
+#                 token = bearer.split()[1]
 
-        if not token:
-            return jsonify({'error': 'Token is missing'}), 401
+#         if not token:
+#             return jsonify({'error': 'Token is missing'}), 401
 
-        data = decode_token(token)
-        if not data:
-            return jsonify({'error': 'Invalid or expired token'}), 401
+#         data = decode_token(token)
+#         if not data:
+#             return jsonify({'error': 'Invalid or expired token'}), 401
 
-        user = User.query.get(data['id'])
-        if not user:
-            return jsonify({'error': 'User not found'}), 404
+#         user = User.query.get(data['id'])
+#         if not user:
+#             return jsonify({'error': 'User not found'}), 404
 
-        return f(user, data, *args, **kwargs)
+#         return f(user, data, *args, **kwargs)
 
-    return decorated
+#     return decorated
 
 
 
@@ -1190,41 +1192,41 @@ def generate_manager_token(manager):
     return token
 
 
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
+# def token_required(f):
+#     @wraps(f)
+#     def decorated(*args, **kwargs):
+#         token = None
 
-        # Check Authorization header
-        if 'Authorization' in request.headers:
-            auth_header = request.headers['Authorization']
-            if auth_header.startswith('Bearer '):
-                token = auth_header.split(' ')[1]
+#         # Check Authorization header
+#         if 'Authorization' in request.headers:
+#             auth_header = request.headers['Authorization']
+#             if auth_header.startswith('Bearer '):
+#                 token = auth_header.split(' ')[1]
 
-        if not token:
-            return jsonify({'error': 'Token is missing'}), 401
+#         if not token:
+#             return jsonify({'error': 'Token is missing'}), 401
 
-        try:
-            data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
+#         try:
+#             data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
 
-            # Optional: check role
-            if data.get('role') != 'manager':
-                return jsonify({'error': 'Unauthorized'}), 403
+#             # Optional: check role
+#             if data.get('role') != 'manager':
+#                 return jsonify({'error': 'Unauthorized'}), 403
 
-            from models import Management  # Import inside to avoid circular import
-            current_manager = Management.query.get(data['id'])
+#             from models import Management  # Import inside to avoid circular import
+#             current_manager = Management.query.get(data['id'])
 
-            if not current_manager:
-                return jsonify({'error': 'Manager not found'}), 404
+#             if not current_manager:
+#                 return jsonify({'error': 'Manager not found'}), 404
 
-        except jwt.ExpiredSignatureError:
-            return jsonify({'error': 'Token has expired'}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({'error': 'Invalid token'}), 401
+#         except jwt.ExpiredSignatureError:
+#             return jsonify({'error': 'Token has expired'}), 401
+#         except jwt.InvalidTokenError:
+#             return jsonify({'error': 'Invalid token'}), 401
 
-        return f(current_manager, *args, **kwargs)
+#         return f(current_manager, *args, **kwargs)
 
-    return decorated
+#     return decorated
 
 def decode_token(token):
     try:
@@ -1303,7 +1305,7 @@ def register_management():
         return jsonify({'error': 'Registration failed'}), 500
 
 @app.route('/management/session', methods=['GET'])
-@token_required
+@manager_token_required
 def management_session(current_manager):
     return jsonify(current_manager.to_dict()), 200
 
