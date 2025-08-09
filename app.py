@@ -433,87 +433,142 @@ def featured_organizers_summary():
         result.append(org_data)
     
     return jsonify(result)
+import re
+from flask import request, jsonify
+from functools import wraps
+
 @app.route('/organizer/profile', methods=['PATCH'])
 @token_required
 def update_organizer_profile(user, token_data):
     try:
-        # ✅ Ensure only organizers can update their own profile
+        # ✅ 1. Authorization Check
         if user.role != 'organizer':
-            return jsonify({'error': 'Unauthorized'}), 403
+            return jsonify({'error': 'Unauthorized - Only organizers can update profiles'}), 403
 
-        # ✅ Find organizer profile for the logged-in user
+        # ✅ 2. Profile Existence Check
         organizer = Organizer.query.filter_by(user_id=user.id).first()
         if not organizer:
             return jsonify({'error': 'Organizer profile not found'}), 404
 
-        # ✅ Get update data
+        # ✅ 3. Payload Validation
         payload = request.get_json()
         if not payload:
-            return jsonify({'error': 'No data provided'}), 400
+            return jsonify({'error': 'No update data provided'}), 400
 
-        # ✅ Allowed fields
-        updatable_fields = {
-            'name': str,
-            'phone': str,
-            'logo': str,
-            'website': str,
-            'description': str,
-            'speciality': str,
-            'contact_email': str
+        # ✅ 4. Field Validation Configuration
+        field_validations = {
+            'name': {
+                'type': str,
+                'required': False,
+                'min_length': 2,
+                'max_length': 100,
+                'pattern': None,
+                'error': 'Name must be 2-100 characters'
+            },
+            'phone': {
+                'type': str,
+                'required': False,
+                'pattern': r'^\+?[\d\s-]{10,}$',
+                'error': 'Invalid phone number format'
+            },
+            'logo': {
+                'type': str,
+                'required': False,
+                'pattern': r'^(https?://.+|)$',
+                'error': 'Logo must be a valid URL starting with http:// or https://'
+            },
+            'website': {
+                'type': str,
+                'required': False,
+                'pattern': r'^(https?://.+|)$',
+                'error': 'Website must be a valid URL starting with http:// or https://'
+            },
+            'description': {
+                'type': str,
+                'required': False,
+                'max_length': 2000,
+                'error': 'Description cannot exceed 2000 characters'
+            },
+            'speciality': {
+                'type': str,
+                'required': False,
+                'max_length': 100,
+                'error': 'Speciality cannot exceed 100 characters'
+            },
+            'contact_email': {
+                'type': str,
+                'required': False,
+                'pattern': r'^[\w\.-]+@[\w\.-]+\.\w+$',
+                'error': 'Invalid email format'
+            }
         }
 
-        for field, field_type in updatable_fields.items():
+        # ✅ 5. Apply Validations
+        errors = {}
+        for field, validation in field_validations.items():
             if field in payload:
                 value = payload[field]
-
+                
                 # Type check
-                if value is not None and not isinstance(value, field_type):
-                    return jsonify({'error': f'Invalid type for {field}'}), 400
+                if value is not None and not isinstance(value, validation['type']):
+                    errors[field] = f'Must be {validation["type"].__name__}'
+                    continue
+                
+                # Skip empty values (allow clearing fields)
+                if value == "" or value is None:
+                    setattr(organizer, field, None)
+                    continue
+                
+                # Length checks
+                if 'min_length' in validation and len(value) < validation['min_length']:
+                    errors[field] = validation['error']
+                
+                if 'max_length' in validation and len(value) > validation['max_length']:
+                    errors[field] = validation['error']
+                
+                # Pattern matching
+                if 'pattern' in validation and validation['pattern']:
+                    if not re.match(validation['pattern'], value):
+                        errors[field] = validation['error']
+        
+        if errors:
+            return jsonify({'error': 'Validation failed', 'details': errors}), 400
 
-                # Email validation
-                if field == 'contact_email' and value:
-                    if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', value):
-                        return jsonify({'error': f'Invalid {field} format'}), 400
+        # ✅ 6. Apply Updates
+        for field in field_validations:
+            if field in payload:
+                setattr(organizer, field, payload[field] or None)
 
-                # Phone validation
-                if field == 'phone' and value:
-                    if not re.match(r'^\+?[\d\s-]{10,}$', value):
-                        return jsonify({'error': 'Invalid phone number format'}), 400
-
-                # URL validation
-                if field in ['website', 'logo'] and value:
-                    if not re.match(r'^https?://.+', value):
-                        return jsonify({'error': f'Invalid {field} URL'}), 400
-
-                setattr(organizer, field, value)
-
+        # ✅ 7. Save Changes
         db.session.commit()
-        return jsonify(organizer.to_dict()), 200
+        
+        # ✅ 8. Return Updated Profile
+        return jsonify({
+            'message': 'Profile updated successfully',
+            'organizer': organizer.to_dict()
+        }), 200
 
     except Exception as e:
         db.session.rollback()
-        print(f"Error updating organizer profile: {e}")
-        return jsonify({'error': 'Failed to update profile'}), 500
-
-
-@app.route('/organizers/<int:user_id>/profile', methods=['GET'])
+        print(f"Error updating organizer profile: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+@app.route('/organizers/<int:organizer_id>/profile', methods=['GET'])
 @token_required
-def get_organizer_profile_by_user(user, token_data, user_id):
+def get_organizer_profile(user, token_data, organizer_id):
     try:
-        # Verify the requesting user matches the requested user_id or is admin
-        if user.id != user_id and user.role != 'admin':
-            return jsonify({'error': 'Unauthorized'}), 403
+        # Verify the user is an organizer and has access to this profile
+        if token_data.get('role') != 'organizer' or user.id != organizer_id:
+            return jsonify({'error': 'Unauthorized access'}), 403
 
-        # Find organizer by user ID
-        organizer = Organizer.query.filter_by(user_id=user_id).first()
+        organizer = Organizer.query.get(organizer_id)
         if not organizer:
-            return jsonify({'error': 'Organizer profile not found'}), 404
+            return jsonify({'error': 'Organizer not found'}), 404
 
         return jsonify(organizer.to_dict()), 200
-        
+
     except Exception as e:
-        print(f"Error getting organizer profile: {e}")
-        return jsonify({'error': 'Server error'}), 500
+        print(f"Error fetching organizer profile: {e}")
+        return jsonify({'error': 'Failed to fetch organizer profile'}), 500
 
 @app.route('/events/counts')
 def event_counts_by_category():
