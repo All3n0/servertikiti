@@ -563,8 +563,8 @@ def get_organizer_profile(user, token_data):
         if token_data.get('role') != 'organizer':
             return jsonify({'error': 'Only organizers can access this endpoint'}), 403
             
-        # Find organizer by user_id
-        organizer = Organizer.query.filter_by(user_id=user.id).first()
+        # Find organizer by email (matching user's email)
+        organizer = Organizer.query.filter_by(email=user.email).first()
         if not organizer:
             return jsonify({'error': 'Organizer profile not found'}), 404
 
@@ -572,7 +572,8 @@ def get_organizer_profile(user, token_data):
 
     except Exception as e:
         print(f"Error fetching organizer profile: {str(e)}")
-        return jsonify({'error': 'Failed to fetch organizer profile'}), 500@app.route('/events/counts')
+        return jsonify({'error': 'Failed to fetch organizer profile'}), 500
+@app.route('/events/counts')
 def event_counts_by_category():
     counts = db.session.query(
         Event.category,
