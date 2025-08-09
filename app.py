@@ -440,7 +440,7 @@ from functools import wraps
 # ✅ GET: Organizer profile
 @app.route('/organizer/details', methods=['GET'])
 @token_required
-def get_organizer_details(user, token_data):
+def get_organizer_details_for_profile(user, token_data):
     if user.role != 'organizer':
         return jsonify({'error': 'Access denied, only organizers can view this data'}), 403
 
