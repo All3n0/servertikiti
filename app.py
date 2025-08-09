@@ -556,11 +556,13 @@ def update_organizer_profile(user, token_data):
 @token_required
 def get_organizer_profile(user, token_data, organizer_id):
     try:
+        print(token_data)
         # Verify the user is an organizer and has access to this profile
-        # if token_data.get('role') != 'organizer' or user.id != organizer_id:
-        #     return jsonify({'error': 'Unauthorized access'}), 403
-
+        if token_data.get('role') != 'organizer' or user.id != organizer_id:
+            return jsonify({'error': 'Unauthorized access'}), 403
+        print(f"Fetching profile for organizer ID: {organizer_id}")
         organizer = Organizer.query.get(organizer_id)
+        print(f"Organizer found: {organizer}")
         if not organizer:
             return jsonify({'error': 'Organizer not found'}), 404
 
