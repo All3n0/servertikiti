@@ -441,7 +441,7 @@ from functools import wraps
 @app.route('/organizer/details', methods=['GET'])
 @token_required
 def get_organizer_details_for_profile(user, token_data):
-    if user.role != 'organizer':
+    if user.role.lower() != 'organizer':
         return jsonify({'error': 'Access denied, only organizers can view this data'}), 403
 
     organizer = Organizer.query.filter_by(email=user.email).first()
