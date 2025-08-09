@@ -438,19 +438,18 @@ from flask import request, jsonify
 from functools import wraps
 
 # ✅ GET: Organizer profile
-@app.route('/organizers/profile', methods=['GET'])
+@app.route('/organizers/user/<int:user_id>', methods=['GET'])
 @token_required
-def get_organizer_profile(user, token_data):
+def get_organizer_profile_by_user(user, token_data, user_id):
     print("Token data:", token_data)  # Debugging line
     if token_data.get('role') != 'organizer':
-        print("Unauthorized")
-        return jsonify({"error": "Unauthorized"}), 401
-    # Get organizer using email from session
-    organizer = Organizer.query.filter_by(email=user.email).first()
+        return jsonify({'error': 'Forbidden'}), 403
+    print("User ID:", user_id)  # Debugging line
+    organizer = Organizer.query.filter_by(user_id=user_id).first()
     print("Organizer found:", organizer)  # Debugging line
     if not organizer:
-        return jsonify({"error": "Organizer profile not found"}), 404
-
+        return jsonify({'error': 'Not found'}), 404
+    
     return jsonify(organizer.to_dict()), 200
 
 
