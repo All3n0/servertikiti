@@ -441,6 +441,8 @@ from functools import wraps
 @app.route('/organizers/profile', methods=['GET'])
 @token_required
 def get_organizer_profile(user, token_data):
+    if token_data.get('role') != 'organizer':
+        return jsonify({"error": "Unauthorized"}), 401
     # Get organizer using email from session
     organizer = Organizer.query.filter_by(email=user.email).first()
 
@@ -454,6 +456,8 @@ def get_organizer_profile(user, token_data):
 @app.route('/organizers/profile', methods=['PATCH'])
 @token_required
 def update_organizer_profile(user, token_data):
+    if token_data.get('role') != 'organizer':
+        return jsonify({"error": "Unauthorized"}), 401
     organizer = Organizer.query.filter_by(email=user.email).first()
 
     if not organizer:
@@ -511,6 +515,7 @@ def update_organizer_profile(user, token_data):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Database error: {str(e)}"}), 500
+
 @app.route('/events/counts')
 def event_counts_by_category():
     counts = db.session.query(
