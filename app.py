@@ -451,6 +451,13 @@ def get_organizer_profile_by_user(user, token_data, user_id):
         return jsonify({'error': 'Not found'}), 404
     
     return jsonify(organizer.to_dict()), 200
+@app.route('/organizers/user/<int:user_id>/profile', methods=['OPTIONS'])
+def options_profile(user_id):
+    response = jsonify({'status': 'ok'})
+    response.headers.add("Access-Control-Allow-Origin", "https://tikiti-ij6f.vercel.app")
+    response.headers.add("Access-Control-Allow-Headers", "Content-Type, Authorization")
+    response.headers.add("Access-Control-Allow-Methods", "GET, OPTIONS")
+    return response
 
 
 # ✅ PATCH: Update Organizer profile
