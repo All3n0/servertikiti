@@ -442,20 +442,26 @@ from functools import wraps
 @token_required
 def update_organizer_profile(user, token_data):
     try:
+        print(f"[DEBUG] PATCH /organizer/profile called by user {user.email} with role {user.role}")
         if user.role != 'organizer':
+            print("[DEBUG] Unauthorized access attempt")
             return jsonify({'error': 'Unauthorized'}), 403
 
         organizer = Organizer.query.filter_by(email=user.email).first()
         if not organizer:
+            print("[DEBUG] Organizer not found for email:", user.email)
             return jsonify({'error': 'Organizer not found'}), 404
 
         payload = request.json
-        # Update fields if present in payload
+        print(f"[DEBUG] Payload received for update: {payload}")
+
         for field in ['name', 'email', 'phone', 'logo', 'website', 'description', 'speciality', 'contact_email']:
             if field in payload:
                 setattr(organizer, field, payload[field])
+                print(f"[DEBUG] Updated {field} to {payload[field]}")
 
         db.session.commit()
+        print("[DEBUG] Organizer profile updated successfully")
         return jsonify(organizer.to_dict()), 200
 
     except Exception as e:
@@ -467,19 +473,23 @@ def update_organizer_profile(user, token_data):
 @token_required
 def get_organizer_profile(user, token_data):
     try:
+        print(f"[DEBUG] GET /organizer/profile called by user {user.email} with role {user.role}")
         if user.role != 'organizer':
+            print("[DEBUG] Unauthorized access attempt")
             return jsonify({'error': 'Unauthorized'}), 403
 
         organizer = Organizer.query.filter_by(email=user.email).first()
         if not organizer:
+            print("[DEBUG] Organizer profile not found for email:", user.email)
             return jsonify({'error': 'Organizer profile not found'}), 404
 
-        return jsonify(organizer.to_dict()), 200
+        profile = organizer.to_dict()
+        print(f"[DEBUG] Returning organizer profile: {profile}")
+        return jsonify(profile), 200
 
     except Exception as e:
         print("Error getting organizer profile:", e)
         return jsonify({'error': 'Server error'}), 500
-
 
 @app.route('/events/counts')
 def event_counts_by_category():
