@@ -470,7 +470,7 @@ def update_organizer_profile(user, token_data):
 
 
 @app.route('/organizer/profile', methods=['GET'])
-@token_required
+@manager_token_required
 def get_organizer_profile(user, token_data):
     try:
         print(f"[DEBUG] GET /organizer/profile called by user {user.email} with role {user.role}")
@@ -1046,7 +1046,7 @@ def decode_token(token):
     except jwt.InvalidTokenError:
         return None
 
-def token_required(f):
+def manager_token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
