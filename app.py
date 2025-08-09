@@ -552,9 +552,9 @@ def update_organizer_profile(user, token_data):
         db.session.rollback()
         print(f"Error updating organizer profile: {str(e)}")
         return jsonify({'error': 'Internal server error'}), 500
-@app.route('/organizers/profile', methods=['GET'])
+@app.route('/organizers/<int:organizer_id>/profile', methods=['GET'])
 @token_required
-def get_organizer_profile(user, token_data):
+def get_organizer_profile(user, token_data, organizer_id):
     try:
         print(f"Token data: {token_data}")
         print(f"User object: {user}")
@@ -563,8 +563,11 @@ def get_organizer_profile(user, token_data):
         if token_data.get('role') != 'organizer':
             return jsonify({'error': 'Only organizers can access this endpoint'}), 403
             
-        # Find organizer by email (matching user's email)
-        organizer = Organizer.query.filter_by(email=user.email).first()
+        # Verify the requested profile belongs to the user
+        if user.id != organizer_id:
+            return jsonify({'error': 'You can only access your own profile'}), 403
+            
+        organizer = Organizer.query.filter_by(user_id=user.id).first()
         if not organizer:
             return jsonify({'error': 'Organizer profile not found'}), 404
 
